@@ -24,3 +24,50 @@ body { font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; background
     background-color: rgba(255, 255, 255, 0.8); border-radius: 50%;
     border: 1px solid black;
 }
+
+/* NOVO: Estilos para o Modal de Crafting */
+#crafting-modal {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+#crafting-modal.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.crafting-item {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.crafting-item button {
+    background-color: #4CAF50; /* Verde */
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 0.3rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.crafting-item button:hover {
+    background-color: #45a049;
+}
+
+.crafting-item button:disabled {
+    background-color: #6b7280; /* Cinza */
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.crafting-requirements {
+    font-size: 0.85rem;
+    color: #a0aec0;
+}

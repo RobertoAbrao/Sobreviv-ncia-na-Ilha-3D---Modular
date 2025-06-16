@@ -14,7 +14,6 @@
     <div class="crosshair"></div>
 
     <div id="hud-container">
-        <!-- Status (canto superior esquerdo) -->
         <div class="hud-element max-w-sm">
             <h2 class="text-xl font-bold mb-3">Status</h2>
             <div class="space-y-3">
@@ -33,21 +32,27 @@
             </div>
         </div>
 
-        <!-- Acontecimentos (canto inferior esquerdo) -->
         <div class="hud-element max-w-md self-start absolute bottom-4 left-4">
             <h2 class="text-xl font-bold mb-2">Acontecimentos</h2>
             <div id="message-log"></div>
         </div>
 
-        <!-- Inventário (NOVO - canto inferior direito) -->
         <div class="hud-element absolute bottom-4 right-4">
             <h2 class="text-xl font-bold mb-2">Inventário</h2>
             <div id="inventory-list" class="space-y-1 text-sm min-w-[150px]">
-                <!-- Itens do inventário serão adicionados aqui via JS -->
-            </div>
+                </div>
         </div>
     </div>
     
+    <div id="crafting-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-xl text-white max-w-sm w-full relative border border-gray-700">
+            <h2 class="text-2xl font-bold mb-6 text-center">Mesa de Criação</h2>
+            <button id="close-crafting-modal" class="absolute top-4 right-4 text-gray-400 hover:text-white text-3xl font-bold leading-none">&times;</button>
+            <div id="crafting-list" class="space-y-4">
+                </div>
+        </div>
+    </div>
+
     <script type="importmap">
         {
             "imports": {

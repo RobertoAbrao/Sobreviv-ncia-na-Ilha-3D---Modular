@@ -4,6 +4,7 @@ export default class Player {
         this.hunger = 0;
         this.thirst = 0;
         this.inventory = {}; // O inventário começa vazio
+        this.hasCampfire = false; // NOVO: Flag para indicar se o jogador tem uma fogueira
     }
 
     // Adiciona um item ao inventário
@@ -12,6 +13,27 @@ export default class Player {
             this.inventory[item] = 0;
         }
         this.inventory[item] += quantity;
+    }
+
+    // NOVO: Verifica se o jogador possui recursos suficientes para um custo
+    hasResources(cost) {
+        for (const item in cost) {
+            if (this.inventory[item] === undefined || this.inventory[item] < cost[item]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // NOVO: Consome recursos do inventário
+    consumeResources(cost) {
+        if (!this.hasResources(cost)) {
+            return false;
+        }
+        for (const item in cost) {
+            this.inventory[item] -= cost[item];
+        }
+        return true;
     }
 
     // A lógica do "tick" do jogo que afeta o jogador
