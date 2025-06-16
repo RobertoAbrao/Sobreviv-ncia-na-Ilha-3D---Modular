@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sobrevivência na Ilha 3D - Modular</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <canvas id="game-canvas"></canvas>
+    <div class="crosshair"></div>
+
+    <div id="hud-container">
+        <!-- Status (canto superior esquerdo) -->
+        <div class="hud-element max-w-sm">
+            <h2 class="text-xl font-bold mb-3">Status</h2>
+            <div class="space-y-3">
+                <div>
+                    <div class="flex justify-between items-center mb-1 text-sm"><span>❤️ Vida</span><span id="health-value">100/100</span></div>
+                    <div class="progress-bar-container"><div id="health-bar" class="progress-bar bg-red-500 w-full"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-1 text-sm"><span>🍖 Fome</span><span id="hunger-value">0/100</span></div>
+                    <div class="progress-bar-container"><div id="hunger-bar" class="progress-bar bg-yellow-500 w-0"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-1 text-sm"><span>💧 Sede</span><span id="thirst-value">0/100</span></div>
+                    <div class="progress-bar-container"><div id="thirst-bar" class="progress-bar bg-blue-500 w-0"></div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Acontecimentos (canto inferior esquerdo) -->
+        <div class="hud-element max-w-md self-start absolute bottom-4 left-4">
+            <h2 class="text-xl font-bold mb-2">Acontecimentos</h2>
+            <div id="message-log"></div>
+        </div>
+
+        <!-- Inventário (NOVO - canto inferior direito) -->
+        <div class="hud-element absolute bottom-4 right-4">
+            <h2 class="text-xl font-bold mb-2">Inventário</h2>
+            <div id="inventory-list" class="space-y-1 text-sm min-w-[150px]">
+                <!-- Itens do inventário serão adicionados aqui via JS -->
+            </div>
+        </div>
+    </div>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+                "simplex-noise": "https://cdn.jsdelivr.net/npm/simplex-noise@4.0.1/dist/esm/simplex-noise.js"
+            }
+        }
+    </script>
+    
+    <script type="module" src="main.js"></script>
+
+</body>
+</html>

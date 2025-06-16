@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sobrevivência na Ilha</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation;
+            transition: background-color 0.5s ease;
+        }
+        .night-mode {
+            background-color: #1a202c; /* um cinza mais escuro */
+            color: #e2e8f0;
+        }
+        .night-mode .bg-white {
+            background-color: #2d3748; /* Cor de card para modo noturno */
+            color: #e2e8f0;
+        }
+        .night-mode .text-gray-800 { color: #f7fafc; }
+        .night-mode .text-gray-600, .night-mode .text-gray-700 { color: #a0aec0; }
+        .night-mode .border-b { border-color: #4a5568; }
+        .night-mode #message-log {
+             background-color: rgba(0, 0, 0, 0.2);
+             border-color: #4a5568;
+        }
+        .night-mode .bg-gray-100 { background-color: #4a5568; }
+        .progress-bar-container { background-color: #4a5568; }
+
+        #map-grid {
+            display: grid;
+            grid-template-columns: repeat(var(--map-size, 10), 1fr);
+            gap: 2px;
+            border: 2px solid #6b7280;
+            background-color: #6b7280;
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        .map-tile {
+            aspect-ratio: 1 / 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(10px, 2.5vw, 20px);
+            position: relative;
+        }
+        .tile-beach { background-color: #fde68a; } /* Amarelo areia */
+        .tile-forest { background-color: #4ade80; } /* Verde floresta */
+        .tile-mountain { background-color: #a8a29e; } /* Cinza pedra */
+        .tile-water { background-color: #60a5fa; } /* Azul água */
+        
+        .player-position::after {
+            content: '🏃';
+            position: absolute;
+            animation: bounce 1s infinite;
+        }
+        .base-position::after {
+            content: '🏠';
+            position: absolute;
+        }
+        @keyframes bounce {
+          0%, 100% { transform: translateY(-15%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); }
+          50% { transform: translateY(0); animation-timing-function: cubic-bezier(0, 0, 0.2, 1); }
+        }
+
+        .action-button { transition: all 0.2s ease; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        .action-button:hover { transform: translateY(-2px); box-shadow: 0 6px 10px rgba(0, 0, 0, 0.15); }
+        .action-button:active { transform: translateY(1px); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+        .action-button:disabled { cursor: not-allowed; opacity: 0.6; transform: translateY(0); box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        
+        .log-message { animation: fadeIn 0.5s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* --- Estilos Melhorados da Barra de Progresso --- */
+        .progress-bar {
+            height: 100%;
+            border-radius: 9999px;
+            transition: width 0.5s ease-in-out;
+            background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.15) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, 0.15) 50%, rgba(255, 255, 255, 0.15) 75%, transparent 75%, transparent);
+            background-size: 40px 40px;
+            animation: progress-bar-stripes 1s linear infinite;
+        }
+        @keyframes progress-bar-stripes {
+            from { background-position: 40px 0; }
+            to { background-position: 0 0; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div id="game-container" class="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
+        <header class="text-center">
+            <h1 class="text-4xl font-bold text-gray-800">Sobrevivência na Ilha</h1>
+            <p class="text-lg text-gray-600 mt-2">Você acordou em uma ilha deserta. Mova-se pelo mapa e sobreviva.</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Coluna da Esquerda: Status e Ações -->
+            <div class="lg:col-span-1 space-y-6">
+                 <!-- Status do Jogador -->
+                <div class="bg-white p-6 rounded-xl shadow-lg space-y-4">
+                    <h2 class="text-2xl font-semibold mb-4 text-center">Seu Status</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-1 gap-4">
+                        <div>
+                            <div class="flex justify-between items-center mb-1"><span class="font-semibold">❤️ Vida</span><span id="health-value">100/100</span></div>
+                            <div class="progress-bar-container"><div id="health-bar" class="progress-bar bg-red-500"></div></div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between items-center mb-1"><span class="font-semibold">🍖 Fome</span><span id="hunger-value">0/100</span></div>
+                            <div class="progress-bar-container"><div id="hunger-bar" class="progress-bar bg-yellow-500"></div></div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between items-center mb-1"><span class="font-semibold">💧 Sede</span><span id="thirst-value">0/100</span></div>
+                            <div class="progress-bar-container"><div id="thirst-bar" class="progress-bar bg-blue-500"></div></div>
+                        </div>
+                    </div>
+                    <div class="text-center pt-4">
+                        <span id="time-of-day-icon" class="text-3xl">☀️</span>
+                        <span class="text-xl font-bold">Dia <span id="day-counter">1</span></span> | <span class="text-gray-600">Posição: <span id="player-coords">0,0</span></span>
+                    </div>
+                </div>
+
+                <!-- Ações do Jogador -->
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h2 class="text-2xl font-semibold mb-6 text-center">Ações</h2>
+                     <div class="space-y-4">
+                         <!-- Movimento -->
+                        <div>
+                            <h3 class="text-lg font-semibold mb-2 text-center text-gray-700">Mover-se</h3>
+                            <div class="grid grid-cols-3 gap-2 items-center justify-center">
+                                <div></div>
+                                <button id="move-north" class="action-button p-3 bg-gray-500 text-white font-bold rounded-lg">↑</button>
+                                <div></div>
+                                <button id="move-west" class="action-button p-3 bg-gray-500 text-white font-bold rounded-lg">←</button>
+                                <button id="search-tile" class="action-button p-3 bg-teal-500 text-white rounded-lg text-sm">Procurar</button>
+                                <button id="move-east" class="action-button p-3 bg-gray-500 text-white font-bold rounded-lg">→</button>
+                                <div></div>
+                                <button id="move-south" class="action-button p-3 bg-gray-500 text-white font-bold rounded-lg">↓</button>
+                                <div></div>
+                            </div>
+                        </div>
+                         <!-- Outras Ações -->
+                        <div class="grid grid-cols-2 gap-4 pt-4">
+                            <button id="action-hunt" class="action-button w-full p-3 bg-orange-500 text-white font-semibold rounded-lg">🏹 Caçar</button>
+                            <button id="action-fish" class="action-button w-full p-3 bg-cyan-500 text-white font-semibold rounded-lg">🎣 Pescar</button>
+                            <button id="action-collect-water" class="action-button w-full p-3 bg-blue-500 text-white font-semibold rounded-lg">💧 Coletar Água</button>
+                            <button id="action-build-shelter" class="action-button w-full p-3 bg-amber-600 text-white font-semibold rounded-lg">🏠 Construir</button>
+                            <button id="action-make-fire" class="action-button w-full p-3 bg-red-600 text-white font-semibold rounded-lg">🔥 Fogueira</button>
+                            <button id="action-cook" class="action-button w-full p-3 bg-yellow-600 text-white font-semibold rounded-lg">🍳 Cozinhar</button>
+                            <button id="action-boil-water" class="action-button w-full p-3 bg-indigo-500 text-white font-semibold rounded-lg">♨️ Ferver</button>
+                            <button id="action-eat" class="action-button w-full p-3 bg-lime-600 text-white font-semibold rounded-lg">🍴 Comer</button>
+                            <button id="action-drink" class="action-button w-full p-3 bg-sky-600 text-white font-semibold rounded-lg">🥤 Beber</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coluna da Direita: Mapa e Log/Inventário -->
+            <div class="lg:col-span-2 space-y-6">
+                 <!-- Mapa -->
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h2 class="text-2xl font-semibold mb-4 text-center">Mapa da Ilha</h2>
+                    <div id="map-container" class="mx-auto max-w-lg">
+                        <div id="map-grid"></div>
+                    </div>
+                </div>
+
+                <!-- Inventário e Log -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-xl shadow-lg">
+                        <h2 class="text-2xl font-semibold mb-4 text-center">Inventário</h2>
+                        <div id="inventory-list" class="space-y-2 text-lg"></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-lg flex flex-col">
+                        <h2 class="text-2xl font-semibold mb-4 text-center">Acontecimentos</h2>
+                        <div id="message-log" class="flex-grow p-3 rounded-lg overflow-y-auto flex flex-col-reverse h-48"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="task-modal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-40">
+        <div class="bg-white p-8 rounded-xl shadow-2xl text-center max-w-xs mx-auto"><h3 id="task-title" class="text-2xl font-bold text-gray-800 mb-4"></h3><div id="task-animation" class="space-y-2 text-4xl animate-pulse mb-4"></div><div class="progress-bar-container"><div id="task-progress-bar" class="progress-bar bg-green-500"></div></div><p class="text-sm text-gray-600 mt-3">Isso levará um momento...</p></div>
+    </div>
+    <div id="game-over-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-white p-8 rounded-xl shadow-2xl text-center max-w-sm mx-auto"><h2 id="game-over-title" class="text-4xl font-bold text-red-600 mb-4">Você Morreu!</h2><p id="game-over-message" class="text-lg text-gray-700 mb-2"></p><p class="text-gray-600 mb-6">Você sobreviveu por <span id="final-day-survived" class="font-bold">0</span> dias.</p><button id="restart-button" class="w-full p-4 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition">Jogar Novamente</button></div>
+    </div>
+
+    <script>
+    // --- CONFIGURAÇÕES DO JOGO ---
+    const TICK_RATE = 2000;
+    const MAP_SIZE = 15;
+    const TICKS_PER_DAY = 30; // 30 ticks = 1 minuto para um ciclo dia/noite
+
+    // --- ESTADO DO JOGO ---
+    let player, map, time;
+    let gameInterval;
+    let isGameOver, isTaskInProgress;
+
+    // --- ELEMENTOS DA UI ---
+    const ui = {
+        healthBar: document.getElementById('health-bar'),
+        hungerBar: document.getElementById('hunger-bar'),
+        thirstBar: document.getElementById('thirst-bar'),
+        healthValue: document.getElementById('health-value'),
+        hungerValue: document.getElementById('hunger-value'),
+        thirstValue: document.getElementById('thirst-value'),
+        dayCounter: document.getElementById('day-counter'),
+        timeOfDayIcon: document.getElementById('time-of-day-icon'),
+        playerCoords: document.getElementById('player-coords'),
+        messageLog: document.getElementById('message-log'),
+        inventoryList: document.getElementById('inventory-list'),
+        mapGrid: document.getElementById('map-grid'),
+        gameOverModal: document.getElementById('game-over-modal'),
+        gameOverMessage: document.getElementById('game-over-message'),
+        finalDaySurvived: document.getElementById('final-day-survived'),
+        restartButton: document.getElementById('restart-button'),
+        taskModal: document.getElementById('task-modal'),
+        taskTitle: document.getElementById('task-title'),
+        taskAnimation: document.getElementById('task-animation'),
+        taskProgressBar: document.getElementById('task-progress-bar'),
+        buttons: {
+            moveNorth: document.getElementById('move-north'),
+            moveSouth: document.getElementById('move-south'),
+            moveEast: document.getElementById('move-east'),
+            moveWest: document.getElementById('move-west'),
+            search: document.getElementById('search-tile'),
+            hunt: document.getElementById('action-hunt'),
+            fish: document.getElementById('action-fish'),
+            collectWater: document.getElementById('action-collect-water'),
+            buildShelter: document.getElementById('action-build-shelter'),
+            makeFire: document.getElementById('action-make-fire'),
+            cook: document.getElementById('action-cook'),
+            boilWater: document.getElementById('action-boil-water'),
+            eat: document.getElementById('action-eat'),
+            drink: document.getElementById('action-drink'),
+        }
+    };
+
+    // --- FUNÇÕES DE INICIALIZAÇÃO ---
+    function initializeGame() {
+        isGameOver = false;
+        isTaskInProgress = false;
+        
+        player = {
+            health: 100, hunger: 0, thirst: 0,
+            x: 0, y: 0, hasShelter: false,
+            inventory: {
+                '🪵 Madeira': 0, '🪨 Pedra': 0, '🥩 Carne Crua': 0, '🍖 Carne Cozida': 0,
+                '💧 Cantil (Água Suja)': 0, '💧 Cantil (Água Limpa)': 0, '🎣 Vara de Pescar': 0,
+                '🐟 Peixe Cru': 0, '🐠 Peixe Cozido': 0,
+            },
+            hasFire: false
+        };
+
+        time = { currentTick: 0, day: 1, isNight: false };
+
+        map = generateMap(MAP_SIZE, MAP_SIZE);
+        // Encontra uma posição inicial válida (não na água)
+        const startPos = findValidStart();
+        player.x = startPos.x;
+        player.y = startPos.y;
+
+        logMessage('Você acorda em uma praia. A fome e a sede logo aparecerão.', 'info');
+        ui.gameOverModal.classList.add('hidden');
+        ui.taskModal.classList.add('hidden');
+        
+        clearInterval(gameInterval);
+        gameInterval = setInterval(gameTick, TICK_RATE);
+        
+        renderMap();
+        updateUI();
+    }
+
+    // --- LOOP PRINCIPAL DO JOGO ---
+    function gameTick() {
+        if (isGameOver || isTaskInProgress) return;
+        
+        time.currentTick++;
+        updateTime();
+
+        // Aumenta fome e sede
+        player.thirst = Math.min(100, player.thirst + 1);
+        player.hunger = Math.min(100, player.hunger + 0.7);
+
+        if (player.hunger >= 100 || player.thirst >= 100) {
+            player.health = Math.max(0, player.health - 2);
+            logMessage('Você está morrendo de fome ou sede!', 'danger');
+        }
+        
+        if(player.hasFire && Math.random() < 0.1) {
+            player.hasFire = false;
+            logMessage('A fogueira se apagou...', 'warning');
+        }
+
+        updateUI();
+        checkGameOver();
+    }
+
+    // --- LÓGICA DO MAPA ---
+    function generateMap(width, height) {
+        const newMap = {
+            width, height, grid: [], shelterLocation: null
+        };
+        document.documentElement.style.setProperty('--map-size', width);
+        // Simples gerador de ilha com Perlin Noise-like
+        for (let y = 0; y < height; y++) {
+            newMap.grid[y] = [];
+            for (let x = 0; x < width; x++) {
+                const distToCenter = Math.sqrt(Math.pow(x - width / 2, 2) + Math.pow(y - height / 2, 2));
+                const maxDist = Math.sqrt(Math.pow(width / 2, 2) + Math.pow(height / 2, 2));
+                const islandFactor = (maxDist - distToCenter) / maxDist;
+                
+                let tileType = 'water';
+                if (islandFactor > 0.1) { // Borda da água
+                    if (islandFactor > 0.6) tileType = 'forest'; // Centro da ilha
+                    else if (islandFactor > 0.45) tileType = 'forest'; 
+                    else tileType = 'beach';
+                }
+                if (islandFactor > 0.5 && Math.random() > 0.85) tileType = 'mountain';
+                
+                newMap.grid[y][x] = { type: tileType, isBase: false, icon: getTileIcon(tileType) };
+            }
+        }
+        return newMap;
+    }
+
+    function findValidStart() {
+        for(let i = 0; i < 100; i++) { // Tenta 100 vezes
+            const x = Math.floor(Math.random() * MAP_SIZE);
+            const y = Math.floor(Math.random() * MAP_SIZE);
+            if(map.grid[y][x].type === 'beach') return { x, y };
+        }
+        return { x: Math.floor(MAP_SIZE/2), y: Math.floor(MAP_SIZE/2) }; // F fallback
+    }
+
+    function getTileIcon(type) {
+        switch(type) {
+            case 'beach': return '🏖️';
+            case 'forest': return '🌲';
+            case 'mountain': return '⛰️';
+            case 'water': return '💧';
+            default: return '?';
+        }
+    }
+
+    function movePlayer(dx, dy) {
+        if(isTaskInProgress) return;
+
+        const newX = player.x + dx;
+        const newY = player.y + dy;
+
+        if (newX >= 0 && newX < map.width && newY >= 0 && newY < map.height) {
+            const targetTile = map.grid[newY][newX];
+            if (targetTile.type !== 'water' && targetTile.type !== 'mountain') {
+                player.x = newX;
+                player.y = newY;
+                player.hunger = Math.min(100, player.hunger + 0.5);
+                player.thirst = Math.min(100, player.thirst + 1);
+                renderMap();
+                updateUI();
+            } else {
+                logMessage('Você não pode se mover para lá.', 'warning');
+            }
+        }
+    }
+
+    // --- LÓGICA DE TEMPO ---
+    function updateTime() {
+        const wasNight = time.isNight;
+        time.isNight = (time.currentTick % TICKS_PER_DAY) > (TICKS_PER_DAY / 2);
+
+        if (wasNight !== time.isNight) {
+            logMessage(time.isNight ? 'A noite caiu...' : 'O sol está nascendo.', 'info');
+            if (!time.isNight) {
+                time.day++;
+            }
+        }
+        document.body.classList.toggle('night-mode', time.isNight);
+    }
+    
+    // --- FUNÇÕES DE RENDERIZAÇÃO E UI ---
+    function renderMap() {
+        ui.mapGrid.innerHTML = '';
+        for (let y = 0; y < map.height; y++) {
+            for (let x = 0; x < map.width; x++) {
+                const tile = map.grid[y][x];
+                const tileEl = document.createElement('div');
+                tileEl.className = `map-tile tile-${tile.type}`;
+                tileEl.textContent = tile.icon;
+                if (x === player.x && y === player.y) {
+                    tileEl.classList.add('player-position');
+                }
+                if (tile.isBase) {
+                     tileEl.classList.add('base-position');
+                }
+                ui.mapGrid.appendChild(tileEl);
+            }
+        }
+    }
+
+    function updateUI() {
+        // Status
+        ui.healthBar.style.width = `${player.health}%`;
+        ui.hungerBar.style.width = `${player.hunger}%`;
+        ui.thirstBar.style.width = `${player.thirst}%`;
+        ui.healthValue.textContent = `${Math.ceil(player.health)}/100`;
+        ui.hungerValue.textContent = `${Math.ceil(player.hunger)}/100`;
+        ui.thirstValue.textContent = `${Math.ceil(player.thirst)}/100`;
+        ui.dayCounter.textContent = time.day;
+        ui.timeOfDayIcon.textContent = time.isNight ? '🌙' : '☀️';
+        ui.playerCoords.textContent = `${player.x}, ${player.y}`;
+
+        // Inventário
+        ui.inventoryList.innerHTML = '';
+        const inventoryItems = Object.entries(player.inventory).filter(([_, count]) => count > 0);
+        if (inventoryItems.length === 0 && !player.hasFire && !player.hasShelter) {
+            ui.inventoryList.innerHTML = '<p class="text-gray-500 text-center">Vazio</p>';
+        } else {
+            inventoryItems.forEach(([item, count]) => {
+                const itemEl = document.createElement('div');
+                itemEl.className = 'flex justify-between items-center bg-gray-100 p-2 rounded-md';
+                itemEl.innerHTML = `<span>${item}</span><span class="font-bold bg-gray-200 px-2 rounded-full">${count}</span>`;
+                ui.inventoryList.appendChild(itemEl);
+            });
+        }
+         if (player.hasFire) {
+             const fireEl = document.createElement('div');
+             fireEl.className = 'flex justify-between items-center bg-red-100 p-2 rounded-md text-red-700 font-bold';
+             fireEl.innerHTML = `<span>🔥 Fogueira</span><span>Acesa</span>`;
+             ui.inventoryList.appendChild(fireEl);
+        }
+
+        // Botões
+        const currentTile = map.grid[player.y][player.x];
+        const canCook = player.inventory['🥩 Carne Crua'] > 0 || player.inventory['🐟 Peixe Cru'] > 0;
+        const canEat = player.inventory['🍖 Carne Cozida'] > 0 || player.inventory['🐠 Peixe Cozido'] > 0;
+        
+        ui.buttons.fish.disabled = currentTile.type !== 'beach';
+        ui.buttons.hunt.disabled = currentTile.type !== 'forest';
+        ui.buttons.buildShelter.disabled = player.hasShelter || player.inventory['🪵 Madeira'] < 20 || player.inventory['🪨 Pedra'] < 10;
+        ui.buttons.makeFire.disabled = player.inventory['🪵 Madeira'] < 5 || player.inventory['🪨 Pedra'] < 1 || player.hasFire;
+        ui.buttons.cook.disabled = !player.hasFire || !canCook;
+        ui.buttons.boilWater.disabled = !player.hasFire || player.inventory['💧 Cantil (Água Suja)'] === 0;
+        ui.buttons.eat.disabled = !canEat;
+        ui.buttons.drink.disabled = player.inventory['💧 Cantil (Água Limpa)'] === 0;
+    }
+    
+    function logMessage(message, type = 'normal') {
+        const colors = { success: 'text-green-600', danger: 'text-red-600', warning: 'text-yellow-600', info: 'text-blue-600', normal: 'text-gray-700' };
+        const logEntry = document.createElement('p');
+        logEntry.textContent = `> ${message}`;
+        logEntry.className = `log-message p-1 rounded ${colors[type] || 'text-gray-700'}`;
+        ui.messageLog.insertBefore(logEntry, ui.messageLog.firstChild);
+        if (ui.messageLog.children.length > 50) ui.messageLog.removeChild(ui.messageLog.lastChild);
+    }
+
+    function setActionsDisabled(disabled) {
+        isTaskInProgress = disabled;
+        Object.values(ui.buttons).forEach(button => button.disabled = disabled);
+        if (!disabled) updateUI();
+    }
+
+    function performTask(config) {
+        const { title, animation, duration, successChance, cost, onSuccess, onFailure } = config;
+        setActionsDisabled(true);
+        ui.taskModal.classList.remove('hidden');
+        ui.taskTitle.textContent = title;
+        ui.taskAnimation.innerHTML = `<span>${animation}</span>`;
+        ui.taskProgressBar.style.width = '0%';
+        let progress = 0;
+        const interval = setInterval(() => {
+            progress += 50;
+            ui.taskProgressBar.style.width = `${(progress / duration) * 100}%`;
+        }, 50);
+
+        setTimeout(() => {
+            clearInterval(interval);
+            player.hunger = Math.min(100, player.hunger + (cost.hunger || 0));
+            player.thirst = Math.min(100, player.thirst + (cost.thirst || 0));
+            if (Math.random() < successChance) onSuccess();
+            else if (onFailure) onFailure();
+            ui.taskModal.classList.add('hidden');
+            setActionsDisabled(false);
+            updateUI();
+            checkGameOver();
+        }, duration);
+    }
+
+    function checkGameOver() {
+        if (player.health <= 0 && !isGameOver) {
+            isGameOver = true;
+            clearInterval(gameInterval);
+            let reason = "Você não resistiu aos perigos da ilha.";
+            if (player.hunger >= 100 && player.thirst >= 100) reason = "Você sucumbiu à fome e à sede.";
+            else if (player.hunger >= 100) reason = "Você morreu de inanição.";
+            else if (player.thirst >= 100) reason = "Você morreu de desidratação.";
+            
+            ui.gameOverMessage.textContent = reason;
+            ui.finalDaySurvived.textContent = time.day;
+            ui.gameOverModal.classList.remove('hidden');
+        }
+    }
+
+    // --- AÇÕES DO JOGADOR ---
+    function searchCurrentTile() {
+        const tileType = map.grid[player.y][player.x].type;
+        let foundSomething = false;
+
+        performTask({
+            title: `Procurando em ${tileType}...`, animation: '🤔...👀',
+            duration: 3000, successChance: 0.7, cost: { hunger: 2, thirst: 3 },
+            onSuccess: () => {
+                if (tileType === 'forest' && Math.random() < 0.8) {
+                    const amount = 1 + Math.floor(Math.random() * 3);
+                    player.inventory['🪵 Madeira'] += amount;
+                    logMessage(`Você encontrou ${amount}x madeira.`, 'success');
+                    foundSomething = true;
+                }
+                if ((tileType === 'beach' || tileType === 'mountain') && Math.random() < 0.6) {
+                    const amount = 1 + Math.floor(Math.random() * 2);
+                    player.inventory['🪨 Pedra'] += amount;
+                    logMessage(`Você encontrou ${amount}x pedra.`, 'success');
+                    foundSomething = true;
+                }
+                if (!foundSomething) logMessage('Não encontrou nada de útil.', 'normal');
+            },
+            onFailure: () => { logMessage('Sua busca não rendeu frutos.', 'warning'); }
+        });
+    }
+
+    function hunt() {
+        performTask({
+            title: 'Caçando...', animation: '🏹...🐾...🎯', duration: 5000, successChance: 0.4,
+            cost: { hunger: 5, thirst: 7 },
+            onSuccess: () => {
+                const amount = 1 + Math.floor(Math.random() * 2);
+                player.inventory['🥩 Carne Crua'] += amount;
+                logMessage(`Você caçou um animal e obteve ${amount}x carne crua!`, 'success');
+            },
+            onFailure: () => {
+                logMessage('A caça escapou!', 'warning');
+                if (Math.random() < 0.2) {
+                    player.health = Math.max(0, player.health - 5);
+                    logMessage('Você se machucou na perseguição.', 'danger');
+                }
+            }
+        });
+    }
+
+    function fish() {
+        if (player.inventory['🎣 Vara de Pescar'] === 0) {
+            if (player.inventory['🪵 Madeira'] >= 3) {
+                 player.inventory['🪵 Madeira'] -= 3;
+                 player.inventory['🎣 Vara de Pescar'] += 1;
+                 logMessage('Você usou 3 madeiras para criar uma vara de pescar.', 'info');
+                 updateUI();
+            } else {
+                 logMessage('Você precisa de 3 madeiras para criar uma vara.', 'danger');
+            }
+            return;
+        }
+        performTask({
+            title: 'Pescando...', animation: '🎣...🐟...🌊', duration: 6000, successChance: 0.6,
+            cost: { hunger: 2, thirst: 4 },
+            onSuccess: () => {
+                const amount = 1 + Math.floor(Math.random() * 2);
+                player.inventory['🐟 Peixe Cru'] += amount;
+                logMessage(`Você pescou ${amount}x peixe!`, 'success');
+            },
+            onFailure: () => { logMessage('Os peixes não morderam a isca.', 'normal'); }
+        });
+    }
+
+    function buildShelter() {
+        performTask({
+            title: 'Construindo Abrigo...', animation: '🔨...🏠...🛠️', duration: 15000, successChance: 1,
+            cost: { hunger: 15, thirst: 20 },
+            onSuccess: () => {
+                player.inventory['🪵 Madeira'] -= 20;
+                player.inventory['🪨 Pedra'] -= 10;
+                player.hasShelter = true;
+                map.grid[player.y][player.x].isBase = true;
+                map.shelterLocation = { x: player.x, y: player.y };
+                logMessage('Você construiu um abrigo! Um lugar para chamar de lar.', 'success');
+                renderMap();
+            }
+        });
+    }
+
+    function makeFire() {
+        performTask({
+            title: 'Fazendo Fogo...', animation: '🔥...🪵...🥵', duration: 7000, successChance: 0.7,
+            cost: { hunger: 4, thirst: 6 },
+            onSuccess: () => {
+                player.inventory['🪵 Madeira'] -= 5;
+                player.inventory['🪨 Pedra'] -= 1;
+                player.hasFire = true;
+                logMessage('Você acendeu uma fogueira!', 'success');
+            },
+            onFailure: () => { logMessage('Você não conseguiu acender o fogo.', 'warning'); }
+        });
+    }
+
+    function cook() {
+        let itemsToCook = (player.inventory['🥩 Carne Crua'] > 0 ? 1 : 0) + (player.inventory['🐟 Peixe Cru'] > 0 ? 1 : 0);
+        performTask({
+            title: 'Cozinhando...', animation: '🍳...🔥...🍖', duration: 4000 * itemsToCook, successChance: 1,
+            cost: { hunger: 1, thirst: 2 },
+            onSuccess: () => {
+                if (player.inventory['🥩 Carne Crua'] > 0) {
+                    const toCook = player.inventory['🥩 Carne Crua'];
+                    player.inventory['🍖 Carne Cozida'] += toCook;
+                    player.inventory['🥩 Carne Crua'] = 0;
+                    logMessage(`Você cozinhou ${toCook}x carne.`, 'success');
+                }
+                if (player.inventory['🐟 Peixe Cru'] > 0) {
+                    const toCook = player.inventory['🐟 Peixe Cru'];
+                    player.inventory['🐠 Peixe Cozido'] += toCook;
+                    player.inventory['🐟 Peixe Cru'] = 0;
+                    logMessage(`Você cozinhou ${toCook}x peixe.`, 'success');
+                }
+            }
+        });
+    }
+
+    function boilWater() {
+         performTask({
+            title: 'Fervendo Água...', animation: '♨️...💧...🔥', duration: 3000 * player.inventory['💧 Cantil (Água Suja)'], successChance: 1,
+            cost: { hunger: 1, thirst: 1 },
+            onSuccess: () => {
+                const toBoil = player.inventory['💧 Cantil (Água Suja)'];
+                player.inventory['💧 Cantil (Água Limpa)'] += toBoil;
+                player.inventory['💧 Cantil (Água Suja)'] = 0;
+                logMessage(`Você ferveu ${toBoil} porções de água.`, 'success');
+            }
+        });
+    }
+
+    function eat() {
+        if (player.inventory['🍖 Carne Cozida'] > 0) {
+            player.inventory['🍖 Carne Cozida'] -= 1;
+            player.hunger = Math.max(0, player.hunger - 40);
+            player.health = Math.min(100, player.health + 5);
+            logMessage('Você comeu carne cozida.', 'success');
+        } else if (player.inventory['🐠 Peixe Cozido'] > 0) {
+            player.inventory['🐠 Peixe Cozido'] -= 1;
+            player.hunger = Math.max(0, player.hunger - 35);
+            player.health = Math.min(100, player.health + 5);
+            logMessage('Você comeu peixe cozido.', 'success');
+        }
+        updateUI();
+    }
+
+    function drink() {
+        if (player.inventory['💧 Cantil (Água Limpa)'] > 0) {
+            player.inventory['💧 Cantil (Água Limpa)'] -= 1;
+            player.thirst = Math.max(0, player.thirst - 50);
+            player.health = Math.min(100, player.health + 5);
+            logMessage('Você bebeu água limpa.', 'success');
+        }
+        updateUI();
+    }
+
+    function collectWater() {
+        player.hunger = Math.min(100, player.hunger + 1);
+        player.thirst = Math.min(100, player.thirst + 2);
+        player.inventory['💧 Cantil (Água Suja)'] += 1;
+        logMessage('Você encheu o cantil com água de uma fonte. Precisa ser fervida.', 'info');
+        updateUI();
+    }
+    
+    // --- EVENT LISTENERS ---
+    ui.buttons.moveNorth.addEventListener('click', () => movePlayer(0, -1));
+    ui.buttons.moveSouth.addEventListener('click', () => movePlayer(0, 1));
+    ui.buttons.moveEast.addEventListener('click', () => movePlayer(1, 0));
+    ui.buttons.moveWest.addEventListener('click', () => movePlayer(-1, 0));
+    ui.buttons.search.addEventListener('click', searchCurrentTile);
+    ui.buttons.hunt.addEventListener('click', hunt);
+    ui.buttons.fish.addEventListener('click', fish);
+    ui.buttons.collectWater.addEventListener('click', collectWater);
+    ui.buttons.buildShelter.addEventListener('click', buildShelter);
+    ui.buttons.makeFire.addEventListener('click', makeFire);
+    ui.buttons.cook.addEventListener('click', cook);
+    ui.buttons.boilWater.addEventListener('click', boilWater);
+    ui.buttons.eat.addEventListener('click', eat);
+    ui.buttons.drink.addEventListener('click', drink);
+    ui.restartButton.addEventListener('click', initializeGame);
+
+    // --- INÍCIO DO JOGO ---
+    window.onload = initializeGame;
+
+    </script>
+
+</body>
+</html>

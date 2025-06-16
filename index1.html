@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sobrevivência na Ilha 3D - Mundo Suave</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; background-color: #87ceeb; }
+        #game-canvas { position: fixed; top: 0; left: 0; outline: none; }
+        #hud-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; display: flex; flex-direction: column;
+            justify-content: space-between; padding: 1.5rem;
+        }
+        .hud-element {
+            pointer-events: auto; background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1rem; border-radius: 0.75rem; color: white;
+        }
+        .progress-bar-container {
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 9999px; overflow: hidden; height: 20px;
+        }
+        .progress-bar { height: 100%; border-radius: 9999px; transition: width 0.5s ease-in-out; }
+        #message-log { max-height: 150px; overflow-y: auto; display: flex; flex-direction: column-reverse; }
+        .crosshair {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%); width: 4px; height: 4px;
+            background-color: rgba(255, 255, 255, 0.8); border-radius: 50%;
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="game-canvas"></canvas>
+    <div class="crosshair"></div>
+
+    <div id="hud-container">
+        <!-- Status (sem mudanças) -->
+        <div class="hud-element max-w-sm">
+            <h2 class="text-xl font-bold mb-3">Status</h2>
+            <div class="space-y-3">
+                <div>
+                    <div class="flex justify-between items-center mb-1 text-sm"><span>❤️ Vida</span><span id="health-value">100/100</span></div>
+                    <div class="progress-bar-container"><div id="health-bar" class="progress-bar bg-red-500 w-full"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-1 text-sm"><span>🍖 Fome</span><span id="hunger-value">0/100</span></div>
+                    <div class="progress-bar-container"><div id="hunger-bar" class="progress-bar bg-yellow-500 w-0"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-1 text-sm"><span>💧 Sede</span><span id="thirst-value">0/100</span></div>
+                    <div class="progress-bar-container"><div id="thirst-bar" class="progress-bar bg-blue-500 w-0"></div></div>
+                </div>
+            </div>
+        </div>
+        <!-- Acontecimentos (sem mudanças) -->
+        <div class="hud-element max-w-md self-start">
+            <h2 class="text-xl font-bold mb-2">Acontecimentos</h2>
+            <div id="message-log"></div>
+        </div>
+    </div>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+                "simplex-noise": "https://cdn.jsdelivr.net/npm/simplex-noise@4.0.1/dist/esm/simplex-noise.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { createNoise2D } from 'simplex-noise';
+
+        // --- CONFIGURAÇÕES GLOBAIS ---
+        const TICK_RATE = 2000;
+        const PLAYER_HEIGHT = 1.7;
+        const ISLAND_SIZE = 150;
+        const WATER_LEVEL = 2.5;
+        
+        // --- ESTADO DO JOGO ---
+        let scene, camera, renderer, clock, raycaster;
+        let player, world, physics;
+        let gameInterval;
+        let animals = [];
+
+        // --- CLASSE DO MUNDO (TERRENO SUAVE) ---
+        class World {
+            constructor() {
+                this.terrainMesh = null;
+                this.waterMesh = null;
+                this.trees = new THREE.Group();
+                this.noise2D = createNoise2D(Math.random);
+            }
+
+            generate() {
+                console.log("Gerando terreno suave...");
+                
+                // 1. Criar a geometria do terreno
+                // Mais subdivisões = terreno mais suave, mas mais pesado. 200x200 é um bom equilíbrio.
+                const terrainGeo = new THREE.PlaneGeometry(ISLAND_SIZE, ISLAND_SIZE, 200, 200);
+                terrainGeo.rotateX(-Math.PI / 2); // Deita o plano no chão (eixo XZ)
+
+                const vertices = terrainGeo.attributes.position;
+                const colors = [];
+                const islandCenter = ISLAND_SIZE / 2;
+
+                // 2. Definir a altura e a cor de cada vértice
+                for (let i = 0; i < vertices.count; i++) {
+                    const x = vertices.getX(i);
+                    const z = vertices.getZ(i);
+
+                    // A lógica de altura é a mesma de antes, criando um formato de ilha
+                    const dist = Math.sqrt(Math.pow(x, 2) + Math.pow(z, 2));
+                    const falloff = (1 - Math.pow(dist / islandCenter, 2.5)) * 18;
+                    const noiseVal = this.noise2D((x + islandCenter) / 40, (z + islandCenter) / 40) * 6;
+                    let height = Math.max(0, falloff + noiseVal);
+
+                    // Define a altura do vértice no eixo Y
+                    vertices.setY(i, height);
+
+                    // Define a cor do vértice com base na altura
+                    const sandColor = new THREE.Color(0xC2B280); // Bege
+                    const grassColor = new THREE.Color(0x4C7F4C); // Verde
+                    const rockColor = new THREE.Color(0x808080); // Cinza
+                    let finalColor = new THREE.Color();
+
+                    if (height < WATER_LEVEL + 1.5) {
+                        finalColor.copy(sandColor);
+                    } else if (height < 12) {
+                        finalColor.copy(grassColor);
+                    } else {
+                        // Mistura suave entre grama e pedra nas altitudes maiores
+                        const t = Math.min(1, (height - 12) / 6);
+                        finalColor.lerpColors(grassColor, rockColor, t);
+                    }
+                    colors.push(finalColor.r, finalColor.g, finalColor.b);
+                }
+                terrainGeo.attributes.position.needsUpdate = true;
+                terrainGeo.computeVertexNormals(); // Recalcula a iluminação
+                terrainGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+                const terrainMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.1, roughness: 0.8 });
+                this.terrainMesh = new THREE.Mesh(terrainGeo, terrainMaterial);
+                this.terrainMesh.receiveShadow = true;
+                this.terrainMesh.castShadow = true;
+                scene.add(this.terrainMesh);
+
+                // 3. Criar a água
+                const waterGeo = new THREE.PlaneGeometry(ISLAND_SIZE, ISLAND_SIZE);
+                waterGeo.rotateX(-Math.PI / 2);
+                waterGeo.translate(0, WATER_LEVEL, 0);
+                const waterMaterial = new THREE.MeshStandardMaterial({
+                    color: 0x1E90FF, transparent: true, opacity: 0.7, roughness: 0.1
+                });
+                this.waterMesh = new THREE.Mesh(waterGeo, waterMaterial);
+                scene.add(this.waterMesh);
+
+                // 4. Espalhar árvores
+                this.placeTrees(80);
+                scene.add(this.trees);
+                console.log("Mundo gerado!");
+            }
+
+            placeTrees(count) {
+                const treeMaterial = new THREE.MeshStandardMaterial({color: 0x664422});
+                const leavesMaterial = new THREE.MeshStandardMaterial({color: 0x228b22});
+
+                for (let i = 0; i < count; i++) {
+                    const x = (Math.random() - 0.5) * ISLAND_SIZE * 0.8;
+                    const z = (Math.random() - 0.5) * ISLAND_SIZE * 0.8;
+                    const height = this.getTerrainHeight(x, z);
+
+                    if (height > WATER_LEVEL + 2 && height < 12) { // Apenas em área de grama
+                        const tree = new THREE.Group();
+                        
+                        // Tronco (Cilindro)
+                        const trunkHeight = 2 + Math.random() * 2;
+                        const trunkGeo = new THREE.CylinderGeometry(0.15, 0.25, trunkHeight, 8);
+                        const trunkMesh = new THREE.Mesh(trunkGeo, treeMaterial);
+                        trunkMesh.position.y = trunkHeight / 2;
+                        trunkMesh.castShadow = true;
+                        
+                        // Folhas (Esfera)
+                        const leavesSize = 1 + Math.random();
+                        const leavesGeo = new THREE.IcosahedronGeometry(leavesSize, 1);
+                        const leavesMesh = new THREE.Mesh(leavesGeo, leavesMaterial);
+                        leavesMesh.position.y = trunkHeight + leavesSize * 0.5;
+                        leavesMesh.castShadow = true;
+
+                        tree.add(trunkMesh);
+                        tree.add(leavesMesh);
+                        tree.position.set(x, height, z);
+                        this.trees.add(tree);
+                    }
+                }
+            }
+            
+            getTerrainHeight(x, z) {
+                raycaster.set(new THREE.Vector3(x, 50, z), new THREE.Vector3(0, -1, 0));
+                const intersects = raycaster.intersectObject(this.terrainMesh);
+                if (intersects.length > 0) {
+                    return intersects[0].point.y;
+                }
+                return 0; // Se não encontrar, retorna 0
+            }
+        }
+        
+        // --- CLASSE DOS ANIMAIS (ADAPTADA) ---
+        class Animal {
+            constructor(position, color = 0xffffff) {
+                const geometry = new THREE.SphereGeometry(0.4, 16, 8);
+                const material = new THREE.MeshStandardMaterial({ color });
+                this.mesh = new THREE.Mesh(geometry, material);
+                this.mesh.position.copy(position);
+                this.mesh.castShadow = true;
+                scene.add(this.mesh);
+                
+                this.velocity = new THREE.Vector3();
+                this.wanderAngle = Math.random() * Math.PI * 2;
+                this.changeDirectionCooldown = 0;
+            }
+
+            update(deltaTime, world) {
+                this.changeDirectionCooldown -= deltaTime;
+                if (this.changeDirectionCooldown <= 0) {
+                    this.wanderAngle += (Math.random() - 0.5) * Math.PI;
+                    this.changeDirectionCooldown = 2 + Math.random() * 3;
+                }
+                
+                const speed = 1.5;
+                this.velocity.x = Math.cos(this.wanderAngle) * speed;
+                this.velocity.z = Math.sin(this.wanderAngle) * speed;
+                
+                const moveStep = this.velocity.clone().multiplyScalar(deltaTime);
+                const nextPos = this.mesh.position.clone().add(moveStep);
+                
+                const groundY = world.getTerrainHeight(nextPos.x, nextPos.z);
+                
+                if (groundY > WATER_LEVEL) {
+                    this.mesh.position.add(moveStep);
+                    this.mesh.position.y = groundY + 0.4;
+                    this.mesh.rotation.y = -this.wanderAngle - Math.PI / 2;
+                } else {
+                    this.wanderAngle += Math.PI;
+                }
+            }
+        }
+
+        // --- FÍSICA DO JOGADOR (ADAPTADA) ---
+        class Physics {
+            constructor(world) {
+                this.world = world;
+                this.velocity = new THREE.Vector3();
+                this.onGround = false;
+                this.gravity = -30.0;
+                this.playerSpeed = 5.0;
+                this.jumpSpeed = 8.0;
+            }
+
+            update(camera, keys, deltaTime) {
+                this.velocity.y += this.gravity * deltaTime;
+                const moveDirection = new THREE.Vector3(
+                    (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0), 0,
+                    (keys['KeyS'] ? 1 : 0) - (keys['KeyW'] ? 1 : 0)
+                );
+                moveDirection.normalize().applyEuler(camera.rotation);
+
+                this.velocity.x = moveDirection.x * this.playerSpeed;
+                this.velocity.z = moveDirection.z * this.playerSpeed;
+                
+                const moveStep = this.velocity.clone().multiplyScalar(deltaTime);
+                this.checkCollisionsAndMove(camera, moveStep);
+            }
+            
+            checkCollisionsAndMove(camera, moveStep) {
+                const groundY = this.world.getTerrainHeight(camera.position.x, camera.position.z);
+
+                if (camera.position.y + moveStep.y < groundY + PLAYER_HEIGHT) {
+                    this.velocity.y = 0;
+                    moveStep.y = groundY + PLAYER_HEIGHT - camera.position.y;
+                    this.onGround = true;
+                } else {
+                    this.onGround = false;
+                }
+
+                if (keys['Space'] && this.onGround) {
+                    this.velocity.y = this.jumpSpeed;
+                    this.onGround = false;
+                }
+                
+                camera.position.add(moveStep);
+
+                if (camera.position.y < WATER_LEVEL + 0.5) {
+                    camera.position.set(0, this.world.getTerrainHeight(0, 0) + PLAYER_HEIGHT, 0);
+                    logMessage('Você quase se afogou!', 'warning');
+                }
+            }
+        }
+
+        // --- INICIALIZAÇÃO DO JOGO ---
+        function initializeGame() {
+            player = { health: 100, hunger: 0, thirst: 0 };
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.Fog(0x87ceeb, 40, ISLAND_SIZE);
+            
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game-canvas'), antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            
+            clock = new THREE.Clock();
+            raycaster = new THREE.Raycaster();
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            dirLight.position.set(50, 100, 50);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.set(2048, 2048);
+            scene.add(dirLight);
+
+            world = new World();
+            world.generate();
+            
+            const startX = 0;
+            const startZ = 0;
+            const startY = world.getTerrainHeight(startX, startZ) + PLAYER_HEIGHT;
+            camera.position.set(startX, startY, startZ);
+
+            physics = new Physics(world);
+            
+            for(let i = 0; i < 15; i++) {
+                const aX = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
+                const aZ = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
+                const aY = world.getTerrainHeight(aX, aZ);
+                if(aY > WATER_LEVEL) {
+                   animals.push(new Animal(new THREE.Vector3(aX, aY + 0.4, aZ), Math.random() * 0xffffff));
+                }
+            }
+            
+            initializeControls();
+            gameInterval = setInterval(gameTick, TICK_RATE);
+            logMessage('Você acordou em uma ilha. Sobreviva.', 'info');
+            animate();
+        }
+
+        // --- CONTROLES (sem mudanças) ---
+        const keys = {};
+        function initializeControls() {
+            document.addEventListener('keydown', (e) => { keys[e.code] = true; });
+            document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+            document.body.addEventListener('click', () => { document.body.requestPointerLock(); });
+            camera.rotation.order = 'YXZ';
+            document.addEventListener('mousemove', (e) => {
+                if (document.pointerLockElement === document.body) {
+                    camera.rotation.y -= e.movementX / 500;
+                    camera.rotation.x -= e.movementY / 500;
+                    camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+                }
+            });
+        }
+
+        // --- LOOPS DO JOGO E UI (sem mudanças) ---
+        function gameTick() {
+            if (player.health <= 0) return;
+            player.thirst = Math.min(100, player.thirst + 1);
+            player.hunger = Math.min(100, player.hunger + 0.5);
+            if (player.hunger >= 100 || player.thirst >= 100) {
+                player.health = Math.max(0, player.health - 2);
+                logMessage('Você está morrendo de fome ou sede!', 'danger');
+            }
+            updateUI();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const deltaTime = clock.getDelta();
+            physics.update(camera, keys, deltaTime);
+            animals.forEach(animal => animal.update(deltaTime, world));
+            renderer.render(scene, camera);
+        }
+        
+        const ui = {
+            healthBar: document.getElementById('health-bar'), hungerBar: document.getElementById('hunger-bar'), thirstBar: document.getElementById('thirst-bar'),
+            healthValue: document.getElementById('health-value'), hungerValue: document.getElementById('hunger-value'), thirstValue: document.getElementById('thirst-value'),
+            messageLog: document.getElementById('message-log'),
+        };
+        function updateUI() {
+            ui.healthBar.style.width = `${player.health}%`;
+            ui.hungerBar.style.width = `${player.hunger}%`;
+            ui.thirstBar.style.width = `${player.thirst}%`;
+            ui.healthValue.textContent = `${Math.ceil(player.health)}/100`;
+            ui.hungerValue.textContent = `${Math.ceil(player.hunger)}/100`;
+            ui.thirstValue.textContent = `${Math.ceil(player.thirst)}/100`;
+        }
+        function logMessage(message, type = 'normal') {
+            const colors = { success: 'text-green-300', danger: 'text-red-400', warning: 'text-yellow-300', info: 'text-blue-300', normal: 'text-gray-200' };
+            const logEntry = document.createElement('p');
+            logEntry.textContent = `> ${message}`;
+            logEntry.className = `p-1 text-sm ${colors[type] || 'text-gray-200'}`;
+            ui.messageLog.insertBefore(logEntry, ui.messageLog.firstChild);
+        }
+        window.addEventListener('resize', () => {
+            if (camera && renderer) {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        });
+
+        // --- INÍCIO ---
+        initializeGame();
+    </script>
+
+</body>
+</html>
