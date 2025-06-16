@@ -9,11 +9,19 @@ const inventoryList = document.getElementById('inventory-list');
 const craftingModal = document.getElementById('crafting-modal'); // NOVO
 const craftingList = document.getElementById('crafting-list'); // NOVO
 
+// NOVO: Elementos da hotbar
+const hotbarSlot1 = document.getElementById('hotbar-slot-1');
+const hotbarSlot2 = document.getElementById('hotbar-slot-2');
+const hotbarItemIcon1 = hotbarSlot1.querySelector('.hotbar-item-icon');
+const hotbarItemIcon2 = hotbarSlot2.querySelector('.hotbar-item-icon');
+
 // NOVO: Emojis para os itens
 const itemEmojis = {
     'Madeira': '🪵',
     'Pedra': '🪨',
-    'Fogueira': '🔥' // NOVO
+    'Fogueira': '🔥', // NOVO
+    'Machado': '🪓', // NOVO
+    'Picareta': '⛏️'  // NOVO
 };
 
 export function updateUI(player) {
@@ -41,6 +49,9 @@ export function updateUI(player) {
         campfireEl.textContent = `${itemEmojis['Fogueira']} Fogueira (Construída)`;
         inventoryList.appendChild(campfireEl);
     }
+
+    // NOVO: Atualiza a Hotbar
+    updateHotbar(player);
 }
 
 export function logMessage(message, type = 'normal') {
@@ -75,7 +86,10 @@ export function toggleCraftingModal(show) {
 export function renderCraftingList(craftableItems, player, onCraft) {
     craftingList.innerHTML = '';
     for (const item of craftableItems) {
-        const canCraft = player.hasResources(item.cost) && (!item.requires || player[item.requires]);
+        // Ajuste para desabilitar o crafting se já tiver a ferramenta
+        const hasTool = (item.name === 'Machado' && player.hasAxe) || (item.name === 'Picareta' && player.hasPickaxe);
+        const canCraft = player.hasResources(item.cost) && (!item.requires || player[item.requires]) && !hasTool;
+
         const itemEl = document.createElement('div');
         itemEl.className = 'crafting-item';
         
@@ -87,6 +101,11 @@ export function renderCraftingList(craftableItems, player, onCraft) {
         if (item.requires) {
             requirementsHtml += `(Requer: ${item.requires === 'hasCampfire' ? 'Fogueira' : item.requires})`;
         }
+        // Adiciona mensagem se já tiver a ferramenta
+        if (hasTool) {
+            requirementsHtml = `Você já possui ${item.name}!`;
+        }
+
 
         itemEl.innerHTML = `
             <div>
@@ -101,4 +120,52 @@ export function renderCraftingList(craftableItems, player, onCraft) {
             itemEl.querySelector('button').addEventListener('click', () => onCraft(item));
         }
     }
+}
+
+// NOVO: Função para atualizar a hotbar visualmente
+function updateHotbar(player) {
+    // Slot 1: Machado
+    if (player.hasAxe) {
+        hotbarItemIcon1.textContent = itemEmojis['Machado'];
+        hotbarItemIcon1.style.opacity = 1;
+    } else {
+        hotbarItemIcon1.textContent = '';
+        hotbarItemIcon1.style.opacity = 0.5;
+    }
+
+    // Slot 2: Picareta
+    if (player.hasPickaxe) {
+        hotbarItemIcon2.textContent = itemEmojis['Picareta'];
+        hotbarItemIcon2.style.opacity = 1;
+    } else {
+        hotbarItemIcon2.textContent = '';
+        hotbarItemIcon2.style.opacity = 0.5;
+    }
+
+    // Marca o slot selecionado
+    hotbarSlot1.classList.remove('selected');
+    hotbarSlot2.classList.remove('selected');
+
+    if (player.equippedTool === 'Machado') {
+        hotbarSlot1.classList.add('selected');
+    } else if (player.equippedTool === 'Picareta') {
+        hotbarSlot2.classList.add('selected');
+    }
+}
+
+// NOVO: Função para selecionar uma ferramenta
+export function selectTool(player, toolName) {
+    // Se o jogador já tem a ferramenta e ela não está equipada, equipa
+    // Se a ferramenta já está equipada, desequipa
+    if (toolName === 'Machado' && player.hasAxe) {
+        player.equippedTool = (player.equippedTool === 'Machado') ? null : 'Machado';
+        logMessage(player.equippedTool === 'Machado' ? 'Machado equipado.' : 'Machado desequipado.', 'info');
+    } else if (toolName === 'Picareta' && player.hasPickaxe) {
+        player.equippedTool = (player.equippedTool === 'Picareta') ? null : 'Picareta';
+        logMessage(player.equippedTool === 'Picareta' ? 'Picareta equipada.' : 'Picareta desequipado.', 'info');
+    } else {
+        logMessage(`Você não possui ${toolName}.`, 'warning');
+        player.equippedTool = null; // Garante que nada está equipado se tentar equipar algo que não tem
+    }
+    updateUI(player); // Atualiza a hotbar para mostrar a seleção
 }

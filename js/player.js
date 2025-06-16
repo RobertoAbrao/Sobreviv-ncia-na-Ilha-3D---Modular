@@ -5,6 +5,9 @@ export default class Player {
         this.thirst = 0;
         this.inventory = {}; // O inventário começa vazio
         this.hasCampfire = false; // NOVO: Flag para indicar se o jogador tem uma fogueira
+        this.hasAxe = false; // NOVO: Flag para indicar se o jogador tem um machado
+        this.hasPickaxe = false; // NOVO: Flag para indicar se o jogador tem uma picareta
+        this.equippedTool = null; // NOVO: Ferramenta atualmente equipada (null, 'Machado', 'Picareta')
     }
 
     // Adiciona um item ao inventário

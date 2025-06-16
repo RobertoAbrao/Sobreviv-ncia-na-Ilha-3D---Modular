@@ -5,7 +5,7 @@ export default class InteractionHandler {
     constructor(camera, world, player, raycaster) {
         this.camera = camera;
         this.world = world;
-        this.player = player;
+        this.player = player; // NOVO: Referência ao objeto Player
         this.raycaster = raycaster;
         this.maxInteractionDistance = 5;
     }
@@ -30,15 +30,23 @@ export default class InteractionHandler {
                 
                 // Verifica se o objeto clicado é uma árvore
                 if (clickedObject.parent === this.world.trees) {
+                    const baseAmount = 5;
+                    // NOVO: Bônus de coleta com machado equipado
+                    const bonus = (this.player.equippedTool === 'Machado') ? 5 : 0; 
+                    const totalAmount = baseAmount + bonus;
                     this.world.removeTree(clickedObject);
-                    this.player.addToInventory('Madeira', 5);
-                    logMessage("Você obteve 5 de madeira!", "success");
+                    this.player.addToInventory('Madeira', totalAmount);
+                    logMessage(`Você obteve ${totalAmount} de madeira!${bonus > 0 ? ' (Com machado!)' : ''}`, "success");
                 } 
                 // Verifica se o objeto clicado é uma pedra
                 else if (clickedObject.parent === this.world.stones) {
+                    const baseAmount = 3;
+                    // NOVO: Bônus de coleta com picareta equipada
+                    const bonus = (this.player.equippedTool === 'Picareta') ? 3 : 0; 
+                    const totalAmount = baseAmount + bonus;
                     this.world.removeStone(clickedObject);
-                    this.player.addToInventory('Pedra', 3); // Adiciona 3 pedras
-                    logMessage("Você obteve 3 pedras!", "success");
+                    this.player.addToInventory('Pedra', totalAmount); // Adiciona pedras
+                    logMessage(`Você obteve ${totalAmount} pedras!${bonus > 0 ? ' (Com picareta!)' : ''}`, "success");
                 }
             }
         }

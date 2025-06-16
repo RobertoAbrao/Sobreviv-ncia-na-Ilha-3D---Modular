@@ -5,22 +5,24 @@ import Player from './js/player.js';
 import Physics from './js/physics.js';
 import Animal from './js/animal.js';
 import InteractionHandler from './js/interaction.js';
-import { Campfire, campfireCost } from './js/campfire.js'; // NOVO: Importa Campfire e campfireCost
-import { updateUI, logMessage, toggleCraftingModal, renderCraftingList } from './js/ui.js'; // NOVO: Importa funções do UI para o modal
+import { Campfire, campfireCost } from './js/campfire.js';
+import { updateUI, logMessage, toggleCraftingModal, renderCraftingList, selectTool } from './js/ui.js'; // NOVO: Importa selectTool
 
 // --- Variáveis Globais da Cena ---
 let scene, camera, renderer, clock, raycaster;
 let world, player, physics, interactionHandler;
 let animals = [];
 let keys = {};
-let isCraftingModalOpen = false; // NOVO: Estado do modal de crafting
-let activeCampfire = null; // NOVO: Referência à fogueira ativa na cena
+let isCraftingModalOpen = false;
+let activeCampfire = null;
+let highlightMesh = null;
+let highlightedObject = null;
 
 // NOVO: Definição dos itens de crafting
 const craftableItems = [
     {
         name: 'Fogueira',
-        cost: campfireCost, // Puxa o custo de campfire.js
+        cost: campfireCost,
         effect: (player, scene, camera, world, raycaster) => {
             if (player.hasCampfire) {
                 logMessage('Você já construiu uma fogueira!', 'warning');
@@ -28,7 +30,6 @@ const craftableItems = [
             }
 
             const position = camera.position.clone();
-            // Tenta colocar a fogueira no chão abaixo do jogador
             const groundY = world.getTerrainHeight(position.x, position.z, raycaster);
             if (groundY < WATER_LEVEL) {
                 logMessage('Não é possível construir na água!', 'danger');
@@ -39,8 +40,34 @@ const craftableItems = [
             const newCampfire = new Campfire(position);
             scene.add(newCampfire.mesh);
             activeCampfire = newCampfire;
-            player.hasCampfire = true; // Define que o jogador tem uma fogueira
+            player.hasCampfire = true;
             logMessage('Você construiu uma fogueira!', 'success');
+            return true;
+        }
+    },
+    {
+        name: 'Machado',
+        cost: { 'Madeira': 10, 'Pedra': 5 },
+        effect: (player) => {
+            if (player.hasAxe) {
+                logMessage('Você já possui um machado!', 'warning');
+                return false;
+            }
+            player.hasAxe = true;
+            logMessage('Você criou um machado!', 'success');
+            return true;
+        }
+    },
+    {
+        name: 'Picareta',
+        cost: { 'Madeira': 10, 'Pedra': 10 },
+        effect: (player) => {
+            if (player.hasPickaxe) {
+                logMessage('Você já possui uma picareta!', 'warning');
+                return false;
+            }
+            player.hasPickaxe = true;
+            logMessage('Você criou uma picareta!', 'success');
             return true;
         }
     }
@@ -62,6 +89,12 @@ function initializeGame() {
     clock = new THREE.Clock();
     raycaster = new THREE.Raycaster();
 
+    const highlightGeometry = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+    const highlightMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+    highlightMesh = new THREE.Mesh(highlightGeometry, highlightMaterial);
+    highlightMesh.visible = false;
+    scene.add(highlightMesh);
+
     // --- Iluminação ---
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
@@ -80,7 +113,7 @@ function initializeGame() {
 
     player = new Player();
     physics = new Physics(world, raycaster);
-    interactionHandler = new InteractionHandler(camera, world, player, raycaster);
+    interactionHandler = new InteractionHandler(camera, world, player, raycaster); // Passa o player para InteractionHandler
 
     // --- Adicionar Animais ---
     for(let i = 0; i < 15; i++) {
@@ -100,7 +133,7 @@ function initializeGame() {
     // Loop de regeneração do mundo
     setInterval(() => {
         world.respawnTreeIfNeeded();
-        world.respawnStoneIfNeeded(); // NOVO: Chama o respawn de pedras
+        world.respawnStoneIfNeeded();
     }, 15000); 
 
     animate();
@@ -109,30 +142,29 @@ function initializeGame() {
 function initializeControls() {
     document.addEventListener('keydown', (e) => { 
         keys[e.code] = true; 
-        // NOVO: Abre/fecha o modal de crafting com a tecla 'B'
         if (e.code === 'KeyB') {
             isCraftingModalOpen = !isCraftingModalOpen;
             toggleCraftingModal(isCraftingModalOpen);
-            // NOVO: Libera o ponteiro se o modal abrir, ou tenta travar se fechar
             if (isCraftingModalOpen) {
-                document.exitPointerLock(); // Libera o ponteiro
+                document.exitPointerLock();
                 renderCraftingList(craftableItems, player, handleCraftItem);
-            } else {
-                // Ao fechar o modal, o jogador pode querer re-travar o ponteiro
-                // Mas isso deve ser feito por um clique, não automaticamente
             }
+        }
+        // NOVO: Lógica para selecionar ferramentas com 1 e 2
+        if (e.code === 'Digit1') {
+            selectTool(player, 'Machado');
+        } else if (e.code === 'Digit2') {
+            selectTool(player, 'Picareta');
         }
     });
     document.addEventListener('keyup', (e) => { keys[e.code] = false; });
     
-    // NOVO: Trava o ponteiro apenas se o modal de crafting não estiver aberto
     document.body.addEventListener('click', () => { 
         if (!isCraftingModalOpen) {
             document.body.requestPointerLock(); 
         }
     });
 
-    // NOVO: Fecha o modal de crafting ao clicar no botão de fechar
     document.getElementById('close-crafting-modal').addEventListener('click', () => {
         isCraftingModalOpen = false;
         toggleCraftingModal(false);
@@ -140,7 +172,6 @@ function initializeControls() {
 
     camera.rotation.order = 'YXZ';
     document.addEventListener('mousemove', (e) => {
-        // NOVO: Só controla a câmera se o ponteiro estiver travado E o modal de crafting não estiver aberto
         if (document.pointerLockElement === document.body && !isCraftingModalOpen) {
             camera.rotation.y -= e.movementX / 500;
             camera.rotation.x -= e.movementY / 500;
@@ -149,22 +180,25 @@ function initializeControls() {
     });
 
     document.addEventListener('mousedown', (e) => {
-        // NOVO: Só interage se o ponteiro estiver travado E o modal de crafting não estiver aberto
         if (document.pointerLockElement === document.body && e.button === 0 && !isCraftingModalOpen) { 
             interactionHandler.handlePrimaryAction();
         }
     });
 }
 
-// NOVO: Função para lidar com a criação de itens
 function handleCraftItem(item) {
+    // Ajuste para não permitir crafitar ferramenta se já tiver
+    if ((item.name === 'Machado' && player.hasAxe) || (item.name === 'Picareta' && player.hasPickaxe)) {
+        logMessage(`Você já possui ${item.name}.`, 'warning');
+        return;
+    }
+
     if (player.hasResources(item.cost)) {
         player.consumeResources(item.cost);
         if (item.effect(player, scene, camera, world, raycaster)) {
-            // Se o item foi criado com sucesso, renderiza a lista novamente para atualizar o estado dos botões
             renderCraftingList(craftableItems, player, handleCraftItem);
         }
-        updateUI(player); // Atualiza a UI do inventário
+        updateUI(player);
     } else {
         logMessage(`Você não tem recursos suficientes para criar ${item.name}.`, 'danger');
     }
@@ -174,12 +208,39 @@ function animate() {
     requestAnimationFrame(animate);
     const deltaTime = clock.getDelta();
 
-    // NOVO: Só atualiza física e animais se o modal de crafting não estiver aberto
     if (!isCraftingModalOpen) {
         physics.update(camera, keys, deltaTime);
         animals.forEach(animal => animal.update(deltaTime, world, raycaster));
-        if (activeCampfire) { // NOVO: Atualiza a fogueira se existir
+        if (activeCampfire) {
             activeCampfire.update(deltaTime);
+        }
+
+        // Lógica para o destaque de interação
+        raycaster.setFromCamera(new THREE.Vector2(), camera);
+        const objectsToIntersect = [...world.trees.children, ...world.stones.children];
+        const intersects = raycaster.intersectObjects(objectsToIntersect, true);
+
+        if (intersects.length > 0 && intersects[0].distance < interactionHandler.maxInteractionDistance) {
+            let interactableObject = intersects[0].object;
+            while (interactableObject.parent !== null && interactableObject.parent !== world.trees && interactableObject.parent !== world.stones) {
+                interactableObject = interactableObject.parent;
+            }
+
+            if (highlightedObject !== interactableObject) {
+                highlightedObject = interactableObject;
+                highlightMesh.visible = true;
+                highlightMesh.position.copy(interactableObject.position);
+                if (interactableObject.parent === world.trees) {
+                    highlightMesh.scale.set(1.5, 3, 1.5);
+                } else if (interactableObject.parent === world.stones) {
+                    highlightMesh.scale.set(1.5, 1.5, 1.5);
+                } else {
+                    highlightMesh.scale.set(1.2, 1.2, 1.2);
+                }
+            }
+        } else {
+            highlightMesh.visible = false;
+            highlightedObject = null;
         }
     }
     
