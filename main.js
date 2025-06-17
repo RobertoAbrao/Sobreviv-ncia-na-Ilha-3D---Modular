@@ -7,7 +7,7 @@ import Physics from './js/physics.js';
 import Animal from './js/animal.js';
 import InteractionHandler from './js/interaction.js';
 import { Campfire, campfireCost } from './js/campfire.js';
-import { updateUI, logMessage, toggleCraftingModal, renderCraftingList, selectTool } from './js/ui.js';
+import { updateUI, logMessage, toggleCraftingModal, renderCraftingList, selectTool, toggleInteractionModal, renderInteractionList } from './js/ui.js'; // NOVO: Importar funções de interação
 
 // --- Variáveis Globais da Cena ---
 let scene, camera, renderer, clock, raycaster;
@@ -15,6 +15,7 @@ let world, player, physics, interactionHandler;
 let animalsInstances = [];
 let keys = {};
 let isCraftingModalOpen = false;
+let isInteractionModalOpen = false; // NOVO: Flag para o modal de interação
 let activeCampfire = null;
 let highlightMesh = null;
 let highlightedObject = null;
@@ -164,7 +165,28 @@ function initializeControls() {
                 document.exitPointerLock();
                 renderCraftingList(craftableItems, player, handleCraftItem);
             }
+            // NOVO: Fecha o modal de interação se o de crafting abrir
+            if (isCraftingModalOpen && isInteractionModalOpen) {
+                isInteractionModalOpen = false;
+                toggleInteractionModal(isInteractionModalOpen);
+            }
         }
+        // NOVO: Adicionar listener para a tecla 'H'
+        if (e.code === 'KeyH') {
+            isInteractionModalOpen = !isInteractionModalOpen;
+            toggleInteractionModal(isInteractionModalOpen);
+            if (isInteractionModalOpen) {
+                document.exitPointerLock();
+                // Função que renderiza os itens de interação (comer/beber)
+                renderInteractionList(player, handlePlayerInteraction); 
+            }
+            // NOVO: Fecha o modal de crafting se o de interação abrir
+            if (isInteractionModalOpen && isCraftingModalOpen) {
+                isCraftingModalOpen = false;
+                toggleCraftingModal(isCraftingModalOpen);
+            }
+        }
+
         if (e.code === 'Digit1') {
             selectTool(player, 'Machado');
         } else if (e.code === 'Digit2') {
@@ -174,7 +196,7 @@ function initializeControls() {
     document.addEventListener('keyup', (e) => { keys[e.code] = false; });
     
     document.body.addEventListener('click', () => { 
-        if (!isCraftingModalOpen) {
+        if (!isCraftingModalOpen && !isInteractionModalOpen) { // NOVO: Verifica ambos os modais
             document.body.requestPointerLock();
         }
     });
@@ -184,9 +206,15 @@ function initializeControls() {
         toggleCraftingModal(false);
     });
 
+    // NOVO: Listener para fechar o modal de interação
+    document.getElementById('close-interaction-modal').addEventListener('click', () => {
+        isInteractionModalOpen = false;
+        toggleInteractionModal(false);
+    });
+
     camera.rotation.order = 'YXZ';
     document.addEventListener('mousemove', (e) => {
-        if (document.pointerLockElement === document.body && !isCraftingModalOpen) {
+        if (document.pointerLockElement === document.body && !isCraftingModalOpen && !isInteractionModalOpen) { // NOVO: Verifica ambos
             camera.rotation.y -= e.movementX / 500;
             camera.rotation.x -= e.movementY / 500;
             camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
@@ -194,7 +222,7 @@ function initializeControls() {
     });
 
     document.addEventListener('mousedown', (e) => {
-        if (document.pointerLockElement === document.body && e.button === 0 && !isCraftingModalOpen) { 
+        if (document.pointerLockElement === document.body && e.button === 0 && !isCraftingModalOpen && !isInteractionModalOpen) { // NOVO: Verifica ambos
             interactionHandler.handlePrimaryAction();
         }
     });
@@ -216,6 +244,19 @@ function handleCraftItem(item) {
         logMessage(`Você não tem recursos suficientes para criar ${item.name}.`, 'danger');
     }
 }
+
+// NOVO: Função para lidar com interações do menu (comer/beber)
+function handlePlayerInteraction(actionType) {
+    if (actionType === 'eat') {
+        player.eatCookedMeat(logMessage);
+    } else if (actionType === 'drink') {
+        player.drinkCleanWater(logMessage);
+    }
+    // Re-renderiza a lista para atualizar os estados dos botões (habilitado/desabilitado)
+    renderInteractionList(player, handlePlayerInteraction); 
+    updateUI(player);
+}
+
 
 // Função para atualizar o ciclo dia/noite
 function updateDayNightCycle(deltaTime) {
@@ -305,7 +346,7 @@ function animate() {
     requestAnimationFrame(animate);
     const deltaTime = clock.getDelta();
 
-    if (!isCraftingModalOpen) {
+    if (!isCraftingModalOpen && !isInteractionModalOpen) { // NOVO: Só atualiza se nenhum modal estiver aberto
         physics.update(camera, keys, deltaTime);
         animalsInstances.forEach(animal => animal.update(deltaTime, world, raycaster));
         if (activeCampfire) {

@@ -9,8 +9,8 @@ export default class Player {
             'Pedra': 0,
             'Carne Crua': 0, 
             'Carne Cozida': 0,
-            'Agua Suja': 0, // NOVO: Água Suja
-            'Agua Limpa': 0 // NOVO: Água Limpa
+            'Agua Suja': 0, 
+            'Agua Limpa': 0 
         }; 
         this.hasCampfire = false;
         this.hasAxe = false;
@@ -26,7 +26,7 @@ export default class Player {
         this.inventory[item] += quantity;
     }
 
-    // NOVO: Verifica se o jogador possui recursos suficientes para um custo
+    // Verifica se o jogador possui recursos suficientes para um custo
     hasResources(cost) {
         for (const item in cost) {
             if (this.inventory[item] === undefined || this.inventory[item] < cost[item]) {
@@ -36,7 +36,7 @@ export default class Player {
         return true;
     }
 
-    // NOVO: Consome recursos do inventário
+    // Consome recursos do inventário
     consumeResources(cost) {
         if (!this.hasResources(cost)) {
             return false;
@@ -47,12 +47,12 @@ export default class Player {
         return true;
     }
 
-    // NOVO: Função para consumir carne cozida
+    // Função para consumir carne cozida
     eatCookedMeat(logMessageCallback) {
         if (this.inventory['Carne Cozida'] > 0) {
             this.inventory['Carne Cozida']--;
-            this.hunger = Math.max(0, this.hunger - 40); // Reduz a fome
-            this.health = Math.min(100, this.health + 5); // Regenera um pouco de vida
+            this.hunger = Math.max(0, this.hunger - 40); 
+            this.health = Math.min(100, this.health + 5); 
             logMessageCallback('Você comeu carne cozida. Que delícia!', 'success');
             return true;
         } else {
@@ -61,12 +61,12 @@ export default class Player {
         }
     }
 
-    // NOVO: Função para beber água limpa
+    // Função para beber água limpa
     drinkCleanWater(logMessageCallback) {
         if (this.inventory['Agua Limpa'] > 0) {
             this.inventory['Agua Limpa']--;
-            this.thirst = Math.max(0, this.thirst - 50); // Reduz a sede
-            this.health = Math.min(100, this.health + 2); // Regenera um pouco de vida
+            this.thirst = Math.max(0, this.thirst - 50); 
+            this.health = Math.min(100, this.health + 2); 
             logMessageCallback('Você bebeu água limpa e refrescante!', 'success');
             return true;
         } else {

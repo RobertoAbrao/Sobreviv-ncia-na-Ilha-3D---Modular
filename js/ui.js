@@ -10,6 +10,10 @@ const inventoryList = document.getElementById('inventory-list');
 const craftingModal = document.getElementById('crafting-modal');
 const craftingList = document.getElementById('crafting-list');
 
+// NOVO: Elementos do modal de interação
+const interactionModal = document.getElementById('interaction-modal');
+const interactionList = document.getElementById('interaction-list');
+
 // Elementos da hotbar
 const hotbarSlot1 = document.getElementById('hotbar-slot-1');
 const hotbarSlot2 = document.getElementById('hotbar-slot-2');
@@ -25,7 +29,7 @@ const itemEmojis = {
     'Picareta': '⛏️',
     'Carne Crua': '🥩',
     'Carne Cozida': '🍖',
-    'Agua Suja': ' tainted💧', // NOVO: Emoji para água suja
+    'Agua Suja': '💧 (Suja)', // NOVO: Emoji para água suja atualizado
     'Agua Limpa': '💧' // NOVO: Emoji para água limpa
 };
 
@@ -54,8 +58,8 @@ export function updateUI(player) {
         campfireEl.textContent = `${itemEmojis['Fogueira']} Fogueira (Construída)`;
         inventoryList.appendChild(campfireEl);
     }
-
-    // Adiciona um botão "Beber Água Limpa" diretamente no inventário se tiver água
+    // REMOVIDO: Botão "Beber Água Limpa" do inventário, agora estará no novo modal
+    /*
     if (player.inventory['Agua Limpa'] > 0) {
         const drinkWaterButton = document.createElement('button');
         drinkWaterButton.textContent = `Beber Água Limpa (${player.inventory['Agua Limpa']})`;
@@ -67,6 +71,7 @@ export function updateUI(player) {
         };
         inventoryList.appendChild(drinkWaterButton);
     }
+    */
 
     // Atualiza a Hotbar
     updateHotbar(player);
@@ -137,6 +142,57 @@ export function renderCraftingList(craftableItems, player, onCraft) {
     }
 }
 
+// NOVO: Funções para o modal de interação (comer/beber)
+export function toggleInteractionModal(show) {
+    if (show) {
+        interactionModal.classList.remove('hidden');
+        setTimeout(() => {
+            interactionModal.classList.add('show');
+        }, 10);
+    } else {
+        interactionModal.classList.remove('show');
+        setTimeout(() => {
+            interactionModal.classList.add('hidden');
+        }, 300);
+    }
+}
+
+export function renderInteractionList(player, onAction) {
+    interactionList.innerHTML = '';
+
+    // Botão Comer Carne Cozida
+    const eatMeatButton = document.createElement('div');
+    eatMeatButton.className = 'crafting-item'; // Reutilizando estilo
+    const canEatMeat = player.inventory['Carne Cozida'] > 0;
+    eatMeatButton.innerHTML = `
+        <div>
+            <h3 class="font-semibold text-lg">${itemEmojis['Carne Cozida']} Comer Carne Cozida</h3>
+            <p class="crafting-requirements">Em inventário: ${player.inventory['Carne Cozida'] || 0}</p>
+        </div>
+        <button data-action="eat" ${canEatMeat ? '' : 'disabled'}>Comer</button>
+    `;
+    interactionList.appendChild(eatMeatButton);
+    if (canEatMeat) {
+        eatMeatButton.querySelector('button').addEventListener('click', () => onAction('eat'));
+    }
+
+    // Botão Beber Água Limpa
+    const drinkWaterButton = document.createElement('div');
+    drinkWaterButton.className = 'crafting-item'; // Reutilizando estilo
+    const canDrinkWater = player.inventory['Agua Limpa'] > 0;
+    drinkWaterButton.innerHTML = `
+        <div>
+            <h3 class="font-semibold text-lg">${itemEmojis['Agua Limpa']} Beber Água Limpa</h3>
+            <p class="crafting-requirements">Em inventário: ${player.inventory['Agua Limpa'] || 0}</p>
+        </div>
+        <button data-action="drink" ${canDrinkWater ? '' : 'disabled'}>Beber</button>
+    `;
+    interactionList.appendChild(drinkWaterButton);
+    if (canDrinkWater) {
+        drinkWaterButton.querySelector('button').addEventListener('click', () => onAction('drink'));
+    }
+}
+
 // Função para atualizar a hotbar visualmente
 function updateHotbar(player) {
     if (player.hasAxe) {
@@ -153,6 +209,7 @@ function updateHotbar(player) {
     } else {
         hotbarItemIcon2.textContent = '';
         hotbarItemIcon2.style.opacity = 0.5;
+    ;
     }
 
     hotbarSlot1.classList.remove('selected');
