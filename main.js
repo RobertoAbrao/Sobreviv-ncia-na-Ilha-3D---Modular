@@ -603,6 +603,9 @@ function updateDayNightCycle(deltaTime) {
 
     scene.background.copy(skyColor);
     scene.fog.color.copy(fogColor);
+
+    // ATUALIZAÇÃO: Adicione a atualização do contador de tempo na UI
+    updateGameTimeUI(); // Adicionado para exibir o tempo
 }
 
 function updateWeather() {
@@ -654,6 +657,14 @@ function stopRainEffect() {
         rainParticles.material.dispose();
         rainParticles = null;
     }
+}
+
+function updateGameTimeUI() {
+    const hours = Math.floor(dayTime);
+    const minutes = Math.floor((dayTime - hours) * 60);
+    const formattedHours = String(hours).padStart(2, '0');
+    const formattedMinutes = String(minutes).padStart(2, '0');
+    document.getElementById('game-time-value').textContent = `${formattedHours}:${formattedMinutes}`;
 }
 
 function animate() {
