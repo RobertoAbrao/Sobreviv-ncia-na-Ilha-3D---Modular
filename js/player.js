@@ -4,11 +4,13 @@ export default class Player {
         this.health = 100;
         this.hunger = 0;
         this.thirst = 0;
-        this.inventory = { // Adicione carne crua e cozida aqui
+        this.inventory = { 
             'Madeira': 0,
             'Pedra': 0,
             'Carne Crua': 0, 
             'Carne Cozida': 0,
+            'Peixe Cru': 0, // NOVO
+            'Peixe Cozido': 0, // NOVO
             'Agua Suja': 0, 
             'Agua Limpa': 0 
         }; 
@@ -57,6 +59,20 @@ export default class Player {
             return true;
         } else {
             logMessageCallback('Você não tem carne cozida para comer.', 'warning');
+            return false;
+        }
+    }
+
+    // NOVO: Função para consumir peixe cozido
+    eatCookedFish(logMessageCallback) {
+        if (this.inventory['Peixe Cozido'] > 0) {
+            this.inventory['Peixe Cozido']--;
+            this.hunger = Math.max(0, this.hunger - 30); // Restaura menos fome que carne
+            this.health = Math.min(100, this.health + 3); // Restaura menos vida que carne
+            logMessageCallback('Você comeu peixe cozido. É bom!', 'success');
+            return true;
+        } else {
+            logMessageCallback('Você não tem peixe cozido para comer.', 'warning');
             return false;
         }
     }

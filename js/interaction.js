@@ -1,8 +1,8 @@
 // js/interaction.js
 import * as THREE from 'three';
-import { logMessage } from './ui.js';
+import { logMessage, toggleCampfireModal, renderCampfireOptions } from './ui.js'; // Importe as novas funções
 import { cookableItems } from './campfire.js'; 
-import { WATER_LEVEL } from './constants.js'; // Importe WATER_LEVEL
+import { WATER_LEVEL } from './constants.js'; 
 
 // NOVO: Referências aos elementos da UI
 const cookingProgressContainer = document.getElementById('cooking-progress-container');
@@ -47,11 +47,9 @@ export default class InteractionHandler {
 
         if (isInWaterArea && isAtWaterLevel) {
             // Se o jogador estiver na área da água e em um nível adequado, permitir a coleta
-            // Você pode adicionar um pequeno cooldown para evitar coleta excessiva
             this.collectWater();
-            return; // Retorna para não processar outras interações imediatamente
+            return; 
         }
-
 
         if (intersects.length > 0) {
             const intersect = intersects[0];
@@ -91,13 +89,14 @@ export default class InteractionHandler {
                     logMessage(`Você caçou um animal e obtejo ${meatAmount}x Carne Crua!`, 'success');
                 }
                 else if (activeCampfireMesh && clickedObject === activeCampfireMesh) {
-                    this.interactWithCampfire();
+                    this.openCampfireMenu(); // Abre o menu da fogueira
                 }
             }
         }
     }
 
-    interactWithCampfire() {
+    // NOVO: Abre o modal de opções da fogueira
+    openCampfireMenu() {
         if (!this.getActiveCampfire()) {
             logMessage('Não há uma fogueira ativa para interagir.', 'warning');
             return;
@@ -107,39 +106,66 @@ export default class InteractionHandler {
             return;
         }
 
-        if (this.player.inventory['Agua Suja'] > 0) {
-            this.boilWaterAtCampfire();
-            return;
-        }
-
-        const meatRecipe = cookableItems.find(item => item.produces === 'Carne Cozida' && this.player.inventory[item.name] >= item.amount);
-        if (meatRecipe) {
-            this.cookItemAtCampfire(meatRecipe);
-            return;
-        }
-
-        logMessage('Você não tem nada para cozinhar ou ferver na fogueira.', 'warning');
+        toggleCampfireModal(true); // Exibe o modal
+        renderCampfireOptions(this.player, 
+            () => this.cookItemAtCampfire('meat'), // Passa uma função para cozinhar carne
+            () => this.boilWaterAtCampfire()      // Passa uma função para ferver água
+        );
+        document.exitPointerLock(); // Sai do modo de travamento do ponteiro
     }
 
-    cookItemAtCampfire(recipe) {
+    // NOVO: Inicia o processo de cozimento de carne ou peixe
+    cookItemAtCampfire(type) {
+        let recipe;
+        if (type === 'meat') {
+            recipe = cookableItems.find(item => item.produces === 'Carne Cozida');
+            if (this.player.inventory['Carne Crua'] === 0) {
+                logMessage('Você não tem carne crua para cozinhar.', 'warning');
+                return;
+            }
+            recipe.name = 'Carne Crua'; // Garante que o nome do item de origem esteja correto para o log
+            recipe.produces = 'Carne Cozida';
+            recipe.amount = 1; // Cozinha um por um
+        } else if (type === 'fish') { // Adicionado para peixe
+            recipe = cookableItems.find(item => item.produces === 'Peixe Cozido'); // Crie uma receita para peixe cozido no campfire.js
+            if (this.player.inventory['Peixe Cru'] === 0) {
+                logMessage('Você não tem peixe cru para cozinhar.', 'warning');
+                return;
+            }
+            recipe.name = 'Peixe Cru';
+            recipe.produces = 'Peixe Cozido';
+            recipe.amount = 1;
+        } else {
+            return;
+        }
+
+        if (this.isCooking) {
+            logMessage('Já tem algo cozinhando/fervendo na fogueira.', 'warning');
+            return;
+        }
+
         this.isCooking = true;
+        toggleCampfireModal(false); // Fecha o modal da fogueira
         cookingProgressContainer.classList.remove('hidden');
 
         let processedAmount = 0;
-        const totalToProcess = this.player.inventory[recipe.name];
+        const totalToProcess = (type === 'meat') ? this.player.inventory['Carne Crua'] : this.player.inventory['Peixe Cru'];
 
         const processingInterval = setInterval(() => {
             if (processedAmount < totalToProcess) {
-                if (this.player.consumeResources({ [recipe.name]: recipe.amount })) {
-                    this.player.addToInventory(recipe.produces, recipe.amount);
+                const consumedItem = (type === 'meat') ? 'Carne Crua' : 'Peixe Cru';
+                const producedItem = (type === 'meat') ? 'Carne Cozida' : 'Peixe Cozido';
+
+                if (this.player.consumeResources({ [consumedItem]: recipe.amount })) {
+                    this.player.addToInventory(producedItem, recipe.amount);
                     processedAmount++;
                     
                     const progress = (processedAmount / totalToProcess) * 100;
                     cookingProgressBar.style.width = `${progress}%`;
-                    cookingProgressText.textContent = `${recipe.processText} ${recipe.produces} (${processedAmount}/${totalToProcess})...`;
-                    logMessage(`Você ${recipe.processVerb} ${recipe.amount}x ${recipe.produces}!`, 'success');
+                    cookingProgressText.textContent = `${recipe.processText} ${producedItem} (${processedAmount}/${totalToProcess})...`;
+                    logMessage(`Você ${recipe.processVerb} ${recipe.amount}x ${producedItem}!`, 'success');
 
-                    if (this.player.inventory[recipe.name] === 0) {
+                    if (this.player.inventory[consumedItem] === 0) {
                         clearInterval(processingInterval);
                         this.finishCooking();
                     }
@@ -154,17 +180,53 @@ export default class InteractionHandler {
         }, recipe.time);
     }
 
+    // NOVO: Inicia o processo de fervura de água
     boilWaterAtCampfire() {
         const waterRecipe = cookableItems.find(item => item.produces === 'Agua Limpa');
-        if (waterRecipe && this.player.inventory[waterRecipe.name] > 0) {
-            this.cookItemAtCampfire(waterRecipe);
-        } else {
+        if (!waterRecipe || this.player.inventory['Agua Suja'] === 0) {
             logMessage('Você não tem água suja para ferver na fogueira.', 'warning');
+            return;
         }
+
+        if (this.isCooking) {
+            logMessage('Já tem algo cozinhando/fervendo na fogueira.', 'warning');
+            return;
+        }
+
+        this.isCooking = true;
+        toggleCampfireModal(false); // Fecha o modal da fogueira
+        cookingProgressContainer.classList.remove('hidden');
+
+        let processedAmount = 0;
+        const totalToProcess = this.player.inventory['Agua Suja'];
+
+        const processingInterval = setInterval(() => {
+            if (processedAmount < totalToProcess) {
+                if (this.player.consumeResources({ [waterRecipe.name]: waterRecipe.amount })) {
+                    this.player.addToInventory(waterRecipe.produces, waterRecipe.amount);
+                    processedAmount++;
+                    
+                    const progress = (processedAmount / totalToProcess) * 100;
+                    cookingProgressBar.style.width = `${progress}%`;
+                    cookingProgressText.textContent = `${waterRecipe.processText} ${waterRecipe.produces} (${processedAmount}/${totalToProcess})...`;
+                    logMessage(`Você ${waterRecipe.processVerb} ${waterRecipe.amount}x ${waterRecipe.produces}!`, 'success');
+
+                    if (this.player.inventory[waterRecipe.name] === 0) {
+                        clearInterval(processingInterval);
+                        this.finishCooking();
+                    }
+                } else {
+                    clearInterval(processingInterval);
+                    this.finishCooking();
+                }
+            } else {
+                clearInterval(processingInterval);
+                this.finishCooking();
+            }
+        }, waterRecipe.time);
     }
 
     collectWater() {
-        // A checagem de proximidade horizontal e vertical foi movida para handlePrimaryAction
         this.player.addToInventory('Agua Suja', 1);
         logMessage('Você coletou um pouco de água suja. É melhor ferver antes de beber!', 'info');
         this.player.thirst = Math.min(100, this.player.thirst + 5); 

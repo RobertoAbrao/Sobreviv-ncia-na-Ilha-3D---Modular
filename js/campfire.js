@@ -59,11 +59,19 @@ export const cookableItems = [
         processVerb: 'cozinhou'
     },
     {
-        name: 'Agua Suja', // NOVO
-        produces: 'Agua Limpa', // NOVO
+        name: 'Peixe Cru', // NOVO: Receita para Peixe Cru
+        produces: 'Peixe Cozido', // NOVO
         amount: 1, // NOVO
-        time: 2000, // NOVO: Tempo em ms para ferver
-        processText: 'Fervendo', // NOVO
-        processVerb: 'ferveu' // NOVO
+        time: 2500, // NOVO: Tempo para cozinhar peixe
+        processText: 'Cozinhando', // NOVO
+        processVerb: 'cozinhou' // NOVO
+    },
+    {
+        name: 'Agua Suja', 
+        produces: 'Agua Limpa', 
+        amount: 1, 
+        time: 2000, 
+        processText: 'Fervendo', 
+        processVerb: 'ferveu' 
     }
 ];

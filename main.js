@@ -7,7 +7,7 @@ import Physics from './js/physics.js';
 import Animal from './js/animal.js';
 import InteractionHandler from './js/interaction.js';
 import { Campfire, campfireCost } from './js/campfire.js';
-import { updateUI, logMessage, toggleCraftingModal, renderCraftingList, selectTool, toggleInteractionModal, renderInteractionList } from './js/ui.js'; // NOVO: Importar funções de interação
+import { updateUI, logMessage, toggleCraftingModal, renderCraftingList, selectTool, toggleInteractionModal, renderInteractionList, toggleCampfireModal } from './js/ui.js'; // NOVO: Importar toggleCampfireModal
 
 // --- Variáveis Globais da Cena ---
 let scene, camera, renderer, clock, raycaster;
@@ -15,7 +15,8 @@ let world, player, physics, interactionHandler;
 let animalsInstances = [];
 let keys = {};
 let isCraftingModalOpen = false;
-let isInteractionModalOpen = false; // NOVO: Flag para o modal de interação
+let isInteractionModalOpen = false; 
+let isCampfireModalOpen = false; // NOVO: Flag para o modal da fogueira
 let activeCampfire = null;
 let highlightMesh = null;
 let highlightedObject = null;
@@ -165,10 +166,14 @@ function initializeControls() {
                 document.exitPointerLock();
                 renderCraftingList(craftableItems, player, handleCraftItem);
             }
-            // NOVO: Fecha o modal de interação se o de crafting abrir
+            // NOVO: Fecha os outros modais se o de crafting abrir
             if (isCraftingModalOpen && isInteractionModalOpen) {
                 isInteractionModalOpen = false;
                 toggleInteractionModal(isInteractionModalOpen);
+            }
+            if (isCraftingModalOpen && isCampfireModalOpen) {
+                isCampfireModalOpen = false;
+                toggleCampfireModal(isCampfireModalOpen);
             }
         }
         // NOVO: Adicionar listener para a tecla 'H'
@@ -180,10 +185,37 @@ function initializeControls() {
                 // Função que renderiza os itens de interação (comer/beber)
                 renderInteractionList(player, handlePlayerInteraction); 
             }
-            // NOVO: Fecha o modal de crafting se o de interação abrir
+            // NOVO: Fecha os outros modais se o de interação abrir
             if (isInteractionModalOpen && isCraftingModalOpen) {
                 isCraftingModalOpen = false;
                 toggleCraftingModal(isCraftingModalOpen);
+            }
+            if (isInteractionModalOpen && isCampfireModalOpen) {
+                isCampfireModalOpen = false;
+                toggleCampfireModal(isCampfireModalOpen);
+            }
+        }
+        // NOVO: Adicionar listener para a tecla 'K' para o modal da fogueira
+        if (e.code === 'KeyK') {
+            if (activeCampfire) { // Só abre se houver uma fogueira construída
+                isCampfireModalOpen = !isCampfireModalOpen;
+                toggleCampfireModal(isCampfireModalOpen);
+                if (isCampfireModalOpen) {
+                    document.exitPointerLock();
+                    // Chama a função para renderizar as opções da fogueira
+                    interactionHandler.openCampfireMenu();
+                }
+                // NOVO: Fecha os outros modais se o da fogueira abrir
+                if (isCampfireModalOpen && isCraftingModalOpen) {
+                    isCraftingModalOpen = false;
+                    toggleCraftingModal(isCraftingModalOpen);
+                }
+                if (isCampfireModalOpen && isInteractionModalOpen) {
+                    isInteractionModalOpen = false;
+                    toggleInteractionModal(isInteractionModalOpen);
+                }
+            } else {
+                logMessage('Você precisa construir uma fogueira primeiro (tecla B)!', 'warning');
             }
         }
 
@@ -196,7 +228,7 @@ function initializeControls() {
     document.addEventListener('keyup', (e) => { keys[e.code] = false; });
     
     document.body.addEventListener('click', () => { 
-        if (!isCraftingModalOpen && !isInteractionModalOpen) { // NOVO: Verifica ambos os modais
+        if (!isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen) { // NOVO: Verifica todos os modais
             document.body.requestPointerLock();
         }
     });
@@ -212,9 +244,15 @@ function initializeControls() {
         toggleInteractionModal(false);
     });
 
+    // NOVO: Listener para fechar o modal da fogueira
+    document.getElementById('close-campfire-modal').addEventListener('click', () => {
+        isCampfireModalOpen = false;
+        toggleCampfireModal(false);
+    });
+
     camera.rotation.order = 'YXZ';
     document.addEventListener('mousemove', (e) => {
-        if (document.pointerLockElement === document.body && !isCraftingModalOpen && !isInteractionModalOpen) { // NOVO: Verifica ambos
+        if (document.pointerLockElement === document.body && !isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen) { // NOVO: Verifica todos
             camera.rotation.y -= e.movementX / 500;
             camera.rotation.x -= e.movementY / 500;
             camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
@@ -222,7 +260,7 @@ function initializeControls() {
     });
 
     document.addEventListener('mousedown', (e) => {
-        if (document.pointerLockElement === document.body && e.button === 0 && !isCraftingModalOpen && !isInteractionModalOpen) { // NOVO: Verifica ambos
+        if (document.pointerLockElement === document.body && e.button === 0 && !isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen) { // NOVO: Verifica todos
             interactionHandler.handlePrimaryAction();
         }
     });
@@ -248,7 +286,14 @@ function handleCraftItem(item) {
 // NOVO: Função para lidar com interações do menu (comer/beber)
 function handlePlayerInteraction(actionType) {
     if (actionType === 'eat') {
-        player.eatCookedMeat(logMessage);
+        // Verifica se há carne cozida ou peixe cozido para comer
+        if (player.inventory['Carne Cozida'] > 0) {
+            player.eatCookedMeat(logMessage);
+        } else if (player.inventory['Peixe Cozido'] > 0) {
+            player.eatCookedFish(logMessage);
+        } else {
+            logMessage('Você não tem nada cozido para comer.', 'warning');
+        }
     } else if (actionType === 'drink') {
         player.drinkCleanWater(logMessage);
     }
@@ -346,7 +391,8 @@ function animate() {
     requestAnimationFrame(animate);
     const deltaTime = clock.getDelta();
 
-    if (!isCraftingModalOpen && !isInteractionModalOpen) { // NOVO: Só atualiza se nenhum modal estiver aberto
+    // NOVO: Só atualiza o jogo se nenhum modal estiver aberto
+    if (!isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen) { 
         physics.update(camera, keys, deltaTime);
         animalsInstances.forEach(animal => animal.update(deltaTime, world, raycaster));
         if (activeCampfire) {

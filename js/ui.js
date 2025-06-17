@@ -14,6 +14,10 @@ const craftingList = document.getElementById('crafting-list');
 const interactionModal = document.getElementById('interaction-modal');
 const interactionList = document.getElementById('interaction-list');
 
+// NOVO: Elementos do modal da fogueira
+const campfireModal = document.getElementById('campfire-modal');
+const campfireOptionsList = document.getElementById('campfire-options-list');
+
 // Elementos da hotbar
 const hotbarSlot1 = document.getElementById('hotbar-slot-1');
 const hotbarSlot2 = document.getElementById('hotbar-slot-2');
@@ -29,8 +33,10 @@ const itemEmojis = {
     'Picareta': '⛏️',
     'Carne Crua': '🥩',
     'Carne Cozida': '🍖',
-    'Agua Suja': '💧 (Suja)', // NOVO: Emoji para água suja atualizado
-    'Agua Limpa': '💧' // NOVO: Emoji para água limpa
+    'Agua Suja': '💧 (Suja)',
+    'Agua Limpa': '💧',
+    'Peixe Cru': '🐟', // Adicionado
+    'Peixe Cozido': '🐠' // Adicionado
 };
 
 export function updateUI(player) {
@@ -58,20 +64,6 @@ export function updateUI(player) {
         campfireEl.textContent = `${itemEmojis['Fogueira']} Fogueira (Construída)`;
         inventoryList.appendChild(campfireEl);
     }
-    // REMOVIDO: Botão "Beber Água Limpa" do inventário, agora estará no novo modal
-    /*
-    if (player.inventory['Agua Limpa'] > 0) {
-        const drinkWaterButton = document.createElement('button');
-        drinkWaterButton.textContent = `Beber Água Limpa (${player.inventory['Agua Limpa']})`;
-        drinkWaterButton.className = 'mt-2 p-2 bg-blue-600 hover:bg-blue-700 text-white rounded w-full';
-        drinkWaterButton.onclick = () => {
-            if (player.drinkCleanWater(logMessage)) {
-                updateUI(player); // Atualiza a UI após beber
-            }
-        };
-        inventoryList.appendChild(drinkWaterButton);
-    }
-    */
 
     // Atualiza a Hotbar
     updateHotbar(player);
@@ -192,6 +184,74 @@ export function renderInteractionList(player, onAction) {
         drinkWaterButton.querySelector('button').addEventListener('click', () => onAction('drink'));
     }
 }
+
+// NOVO: Funções para o modal da fogueira
+export function toggleCampfireModal(show) {
+    if (show) {
+        campfireModal.classList.remove('hidden');
+        setTimeout(() => {
+            campfireModal.classList.add('show');
+        }, 10);
+    } else {
+        campfireModal.classList.remove('show');
+        setTimeout(() => {
+            campfireModal.classList.add('hidden');
+        }, 300);
+    }
+}
+
+export function renderCampfireOptions(player, onCookMeat, onBoilWater) {
+    campfireOptionsList.innerHTML = '';
+
+    // Opção: Cozinhar Carne Crua
+    const cookMeatOption = document.createElement('div');
+    cookMeatOption.className = 'crafting-item';
+    const canCookMeat = player.inventory['Carne Crua'] > 0;
+    cookMeatOption.innerHTML = `
+        <div>
+            <h3 class="font-semibold text-lg">${itemEmojis['Carne Crua']} Cozinhar Carne</h3>
+            <p class="crafting-requirements">Em inventário: ${player.inventory['Carne Crua'] || 0}</p>
+        </div>
+        <button data-action="cook-meat" ${canCookMeat ? '' : 'disabled'}>Cozinhar</button>
+    `;
+    campfireOptionsList.appendChild(cookMeatOption);
+    if (canCookMeat) {
+        cookMeatOption.querySelector('button').addEventListener('click', onCookMeat);
+    }
+
+    // Opção: Cozinhar Peixe Cru
+    const cookFishOption = document.createElement('div');
+    cookFishOption.className = 'crafting-item';
+    const canCookFish = player.inventory['Peixe Cru'] > 0;
+    cookFishOption.innerHTML = `
+        <div>
+            <h3 class="font-semibold text-lg">${itemEmojis['Peixe Cru']} Cozinhar Peixe</h3>
+            <p class="crafting-requirements">Em inventário: ${player.inventory['Peixe Cru'] || 0}</p>
+        </div>
+        <button data-action="cook-fish" ${canCookFish ? '' : 'disabled'}>Cozinhar</button>
+    `;
+    campfireOptionsList.appendChild(cookFishOption);
+    if (canCookFish) {
+        cookFishOption.querySelector('button').addEventListener('click', onCookMeat); // Reutiliza a mesma função de cozinhar carne
+    }
+
+    // Opção: Ferver Água Suja
+    const boilWaterOption = document.createElement('div');
+    boilWaterOption.className = 'crafting-item';
+    const canBoilWater = player.inventory['Agua Suja'] > 0;
+    boilWaterOption.innerHTML = `
+        <div>
+            <h3 class="font-semibold text-lg">${itemEmojis['Agua Suja']} Ferver Água</h3>
+            <p class="crafting-requirements">Em inventário: ${player.inventory['Agua Suja'] || 0}</p>
+        </div>
+        <button data-action="boil-water" ${canBoilWater ? '' : 'disabled'}>Ferver</button>
+    `;
+    campfireOptionsList.appendChild(boilWaterOption);
+    if (canBoilWater) {
+        boilWaterOption.querySelector('button').addEventListener('click', onBoilWater);
+    }
+}
+
 
 // Função para atualizar a hotbar visualmente
 function updateHotbar(player) {
