@@ -125,6 +125,7 @@ function initializeGame() {
 
     player = new Player();
     physics = new Physics(world, raycaster);
+    // Passa a fogueira ativa para o InteractionHandler
     interactionHandler = new InteractionHandler(camera, world, player, raycaster, () => activeCampfire);
 
     // --- Adicionar Animais ---
@@ -174,10 +175,7 @@ function initializeControls() {
     
     document.body.addEventListener('click', () => { 
         if (!isCraftingModalOpen) {
-            // Só pedimos o pointer lock se não estivermos em uma tarefa
-            if (!interactionHandler.isTaskInProgress) { // Acessa a variável de estado do InteractionHandler
-                document.body.requestPointerLock();
-            }
+            document.body.requestPointerLock();
         }
     });
 
@@ -188,7 +186,7 @@ function initializeControls() {
 
     camera.rotation.order = 'YXZ';
     document.addEventListener('mousemove', (e) => {
-        if (document.pointerLockElement === document.body && !isCraftingModalOpen && !interactionHandler.isTaskInProgress) { // Verifica isTaskInProgress
+        if (document.pointerLockElement === document.body && !isCraftingModalOpen) {
             camera.rotation.y -= e.movementX / 500;
             camera.rotation.x -= e.movementY / 500;
             camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
@@ -307,8 +305,7 @@ function animate() {
     requestAnimationFrame(animate);
     const deltaTime = clock.getDelta();
 
-    // Adicionado: Verifica se uma tarefa está em andamento para pausar o movimento/animações
-    if (!isCraftingModalOpen && !interactionHandler.isTaskInProgress) {
+    if (!isCraftingModalOpen) {
         physics.update(camera, keys, deltaTime);
         animalsInstances.forEach(animal => animal.update(deltaTime, world, raycaster));
         if (activeCampfire) {
@@ -356,9 +353,9 @@ function animate() {
             highlightMesh.visible = false;
             highlightedObject = null;
         }
-    } else {
-        // Se a tarefa estiver em progresso, o jogo não atualiza a física e os animais, mas o tempo do dia ainda deve avançar.
-        updateDayNightCycle(deltaTime);
+        
+        // NOVO: Atualiza a posição da barra de progresso do cozimento
+        interactionHandler.updateCookingProgressUI(camera, renderer);
     }
     
     updateUI(player);

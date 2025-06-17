@@ -64,16 +64,13 @@
         </div>
     </div>
 
-    <div id="task-modal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-40">
-        <div class="bg-gray-800 p-8 rounded-xl shadow-2xl text-center max-w-xs mx-auto text-white">
-            <h3 id="task-title" class="text-2xl font-bold mb-4"></h3>
-            <div id="task-animation" class="space-y-2 text-4xl animate-pulse mb-4"></div>
-            <div class="progress-bar-container">
-                <div id="task-progress-bar" class="progress-bar bg-green-500"></div>
-            </div>
-            <p class="text-sm text-gray-400 mt-3">Isso levará um momento...</p>
+    <div id="cooking-progress-container" class="hidden fixed p-1 rounded-md bg-black bg-opacity-70 text-white text-sm whitespace-nowrap z-40" style="transform: translate(-50%, -50%);">
+        <span id="cooking-progress-text">Cozinhando...</span>
+        <div class="progress-bar-container mt-1 w-24 h-3">
+            <div id="cooking-progress-bar" class="progress-bar bg-green-500 w-0"></div>
         </div>
     </div>
+
     <script type="importmap">
         {
             "imports": {

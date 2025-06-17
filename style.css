@@ -82,3 +82,28 @@ body { font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; background
     border-color: #38bdf8; /* Cor de destaque para o slot selecionado */
     background-color: rgba(255, 255, 255, 0.1); /* Um pouco mais claro quando selecionado */
 }
+
+/* NOVO: Estilos para a barra de progresso do cozimento */
+#cooking-progress-container {
+    position: fixed;
+    top: 50%; /* Será atualizado via JS */
+    left: 50%; /* Será atualizado via JS */
+    transform: translate(-50%, -50%); /* Centraliza o elemento */
+    pointer-events: none; /* Permite clicar através dele */
+    z-index: 100; /* Garante que fique acima de outros elementos */
+    font-size: 0.85rem;
+    padding: 0.5rem;
+    border-radius: 0.375rem;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+#cooking-progress-container .progress-bar-container {
+    height: 10px; /* Altura menor para a barra */
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+#cooking-progress-container .progress-bar {
+    background-color: #fca311; /* Cor de fogo/cozimento */
+}

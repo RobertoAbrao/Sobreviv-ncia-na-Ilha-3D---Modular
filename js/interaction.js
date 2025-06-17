@@ -1,15 +1,12 @@
 // js/interaction.js
 import * as THREE from 'three';
-import { logMessage, updateUI } from './ui.js'; // Importa updateUI também
+import { logMessage } from './ui.js';
 import { cookableItems } from './campfire.js';
 
-// Variáveis para o modal de tarefa (necessário para o performTask)
-const taskModal = document.getElementById('task-modal');
-const taskTitle = document.getElementById('task-title');
-const taskAnimation = document.getElementById('task-animation');
-const taskProgressBar = document.getElementById('task-progress-bar');
-
-let isTaskInProgress = false; // Estado para controlar se uma tarefa está em andamento
+// NOVO: Referências aos elementos da UI
+const cookingProgressContainer = document.getElementById('cooking-progress-container');
+const cookingProgressBar = document.getElementById('cooking-progress-bar');
+const cookingProgressText = document.getElementById('cooking-progress-text');
 
 export default class InteractionHandler {
     constructor(camera, world, player, raycaster, getActiveCampfire) {
@@ -19,51 +16,10 @@ export default class InteractionHandler {
         this.raycaster = raycaster;
         this.maxInteractionDistance = 5;
         this.getActiveCampfire = getActiveCampfire;
-    }
-
-    // Método para desabilitar/habilitar ações durante uma tarefa
-    setActionsDisabled(disabled) {
-        isTaskInProgress = disabled;
-        // Futuramente, você pode querer desabilitar os controles do jogador aqui
-        // Por enquanto, apenas atualizamos a variável de estado
-    }
-
-    // NOVO: Função para exibir um modal de progresso para tarefas
-    performTask(config) {
-        const { title, animation, duration, onSuccess, onFailure } = config;
-        this.setActionsDisabled(true); // Desabilita outras ações
-        
-        taskModal.classList.remove('hidden');
-        taskTitle.textContent = title;
-        taskAnimation.innerHTML = `<span>${animation}</span>`;
-        taskProgressBar.style.width = '0%';
-        
-        let progress = 0;
-        const interval = setInterval(() => {
-            progress += 50; // Incrementa o progresso
-            taskProgressBar.style.width = `${Math.min(100, (progress / duration) * 100)}%`;
-        }, 50);
-
-        setTimeout(() => {
-            clearInterval(interval);
-            taskModal.classList.add('hidden');
-            this.setActionsDisabled(false); // Habilita ações novamente
-            
-            // Consumo de fome/sede durante a tarefa (se aplicável) - ajustar conforme necessário
-            this.player.hunger = Math.min(100, this.player.hunger + 1); 
-            this.player.thirst = Math.min(100, this.player.thirst + 1);
-            
-            onSuccess(); // Chama a função de sucesso
-            updateUI(this.player); // Atualiza a UI após a tarefa
-        }, duration);
+        this.isCooking = false; // NOVO: Flag para evitar cozimentos múltiplos
     }
 
     handlePrimaryAction() {
-        if (isTaskInProgress) { // Impede interações se uma tarefa estiver em andamento
-            logMessage('Uma tarefa já está em progresso...', 'warning');
-            return;
-        }
-
         this.raycaster.setFromCamera(new THREE.Vector2(), this.camera); 
 
         const objectsToIntersect = [...this.world.trees.children, ...this.world.stones.children, ...this.world.animals.children];
@@ -119,28 +75,83 @@ export default class InteractionHandler {
         }
     }
 
-    // Método para cozinhar na fogueira
     cookItemAtCampfire() {
         if (!this.getActiveCampfire()) {
             logMessage('Não há uma fogueira ativa para cozinhar.', 'warning');
+            return;
+        }
+        if (this.isCooking) { // Se já estiver cozinhando, não faz nada
+            logMessage('Já tem algo cozinhando na fogueira.', 'warning');
             return;
         }
 
         const recipe = cookableItems.find(item => this.player.inventory[item.name] >= item.amount);
 
         if (recipe) {
-            this.performTask({
-                title: `Cozinhando ${recipe.name}...`,
-                animation: '🍳...🔥...🍖',
-                duration: recipe.time, // Usa o tempo definido na receita
-                onSuccess: () => {
+            this.isCooking = true; // Define a flag de cozimento
+            cookingProgressContainer.classList.remove('hidden'); // Mostra a barra
+
+            let cookedAmount = 0;
+            const totalToCook = this.player.inventory[recipe.name]; // Cozinhar todo o estoque disponível
+
+            const cookingInterval = setInterval(() => {
+                if (cookedAmount < totalToCook) {
                     this.player.consumeResources({ [recipe.name]: recipe.amount });
                     this.player.addToInventory(recipe.produces, recipe.amount);
+                    cookedAmount++;
+                    
+                    const progress = (cookedAmount / totalToCook) * 100;
+                    cookingProgressBar.style.width = `${progress}%`;
+                    cookingProgressText.textContent = `Cozinhando ${recipe.produces} (${cookedAmount}/${totalToCook})...`;
                     logMessage(`Você cozinhou ${recipe.amount}x ${recipe.produces}!`, 'success');
+
+                    if (this.player.inventory[recipe.name] === 0) { // Se acabou a carne crua, para
+                        clearInterval(cookingInterval);
+                        this.finishCooking();
+                    }
+                } else {
+                    clearInterval(cookingInterval);
+                    this.finishCooking();
                 }
-            });
+            }, recipe.time); // Tempo de cozimento por item
+
         } else {
             logMessage('Você não tem nada para cozinhar na fogueira (ex: Carne Crua).', 'warning');
         }
+    }
+
+    // NOVO: Função para finalizar o cozimento
+    finishCooking() {
+        this.isCooking = false;
+        cookingProgressContainer.classList.add('hidden');
+        cookingProgressBar.style.width = '0%';
+        cookingProgressText.textContent = 'Cozinhando...';
+        logMessage('Cozimento finalizado!', 'info');
+    }
+
+    // NOVO: Método para atualizar a posição da barra de progresso (chamado no animate loop do main.js)
+    updateCookingProgressUI(camera, renderer) {
+        if (!this.isCooking || !this.getActiveCampfire()) {
+            cookingProgressContainer.classList.add('hidden');
+            return;
+        }
+
+        const campfireMesh = this.getActiveCampfire().mesh;
+        const vector = new THREE.Vector3();
+        // A posição da barra deve ser um pouco acima da fogueira
+        vector.set(campfireMesh.position.x, campfireMesh.position.y + 1.5, campfireMesh.position.z);
+        
+        // Projeta a posição 3D para coordenadas 2D da tela
+        vector.project(camera);
+
+        const width = renderer.domElement.clientWidth;
+        const height = renderer.domElement.clientHeight;
+
+        const x = (vector.x * 0.5 + 0.5) * width;
+        const y = (-vector.y * 0.5 + 0.5) * height;
+
+        cookingProgressContainer.style.left = `${x}px`;
+        cookingProgressContainer.style.top = `${y}px`;
+        cookingProgressContainer.classList.remove('hidden');
     }
 }
