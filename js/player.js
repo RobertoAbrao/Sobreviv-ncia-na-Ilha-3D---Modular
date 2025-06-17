@@ -16,13 +16,14 @@ export default class Player {
             'Agua Limpa': 0
         };
         this.hasCampfire = false;
-        this.campfireLocation = null; // Propriedade para armazenar a localização da fogueira
+        this.campfireLocation = null;
         this.hasShelter = false;
-        this.shelterLocation = null; // Adicionado: Propriedade para armazenar a localização do abrigo
+        this.shelterLocation = null;
         this.equippedTool = null;
+        this.hasAxe = false; // Adicionado: Estado do machado
+        this.hasPickaxe = false; // Adicionado: Estado da picareta
     }
 
-    // Adiciona um item ao inventário
     addToInventory(item, quantity) {
         if (this.inventory[item] === undefined) {
             this.inventory[item] = 0;
@@ -30,7 +31,6 @@ export default class Player {
         this.inventory[item] += quantity;
     }
 
-    // Verifica se o jogador possui recursos suficientes para um custo
     hasResources(cost) {
         for (const item in cost) {
             if (this.inventory[item] === undefined || this.inventory[item] < cost[item]) {
@@ -40,7 +40,6 @@ export default class Player {
         return true;
     }
 
-    // Consome recursos do inventário
     consumeResources(cost) {
         if (!this.hasResources(cost)) {
             return false;
@@ -51,7 +50,6 @@ export default class Player {
         return true;
     }
 
-    // Função para consumir carne cozida
     eatCookedMeat(logMessageCallback) {
         if (this.inventory['Carne Cozida'] > 0) {
             this.inventory['Carne Cozida']--;
@@ -65,7 +63,6 @@ export default class Player {
         }
     }
 
-    // Função para consumir peixe cozido
     eatCookedFish(logMessageCallback) {
         if (this.inventory['Peixe Cozido'] > 0) {
             this.inventory['Peixe Cozido']--;
@@ -79,7 +76,6 @@ export default class Player {
         }
     }
 
-    // Função para beber água limpa
     drinkCleanWater(logMessageCallback) {
         if (this.inventory['Agua Limpa'] > 0) {
             this.inventory['Agua Limpa']--;
@@ -93,7 +89,6 @@ export default class Player {
         }
     }
 
-    // A lógica do "tick" do jogo que afeta o jogador
     gameTick(logMessageCallback, isNight, isRaining, isNearShelterOrCampfire) {
         if (this.health <= 0) return;
 
@@ -107,7 +102,7 @@ export default class Player {
         } else if (isRaining && !isNearShelterOrCampfire) {
             this.coldness = Math.min(100, this.coldness + 2);
             logMessageCallback('Você está sentindo o frio da chuva!', 'warning');
-        } else if (isNearShelterOrCampfire) { // Verifica se está em abrigo seco ou perto da fogueira
+        } else if (isNearShelterOrCampfire) {
             this.coldness = Math.max(0, this.coldness - 5);
         } else {
             this.coldness = Math.max(0, this.coldness - 1);
@@ -124,7 +119,6 @@ export default class Player {
         }
     }
 
-    // Método para salvar o estado do jogador
     saveState() {
         return {
             health: this.health,
@@ -135,8 +129,10 @@ export default class Player {
             hasCampfire: this.hasCampfire,
             campfireLocation: this.campfireLocation,
             hasShelter: this.hasShelter,
-            shelterLocation: this.shelterLocation, // Salvando a localização da barraca
+            shelterLocation: this.shelterLocation,
             equippedTool: this.equippedTool,
+            hasAxe: this.hasAxe, // Incluído no estado salvo
+            hasPickaxe: this.hasPickaxe, // Incluído no estado salvo
         };
     }
 
@@ -152,8 +148,9 @@ export default class Player {
         this.hasCampfire = state.hasCampfire !== undefined ? state.hasCampfire : false;
         this.campfireLocation = state.campfireLocation || null;
         this.hasShelter = state.hasShelter !== undefined ? state.hasShelter : false;
-        this.shelterLocation = state.shelterLocation || null; // Carregando a localização da barraca
+        this.shelterLocation = state.shelterLocation || null;
         this.equippedTool = state.equippedTool !== undefined ? state.equippedTool : null;
+        this.hasAxe = state.hasAxe !== undefined ? state.hasAxe : false; // Carregado do estado salvo
+        this.hasPickaxe = state.hasPickaxe !== undefined ? state.hasPickaxe : false; // Carregado do estado salvo
     }
-
 }
