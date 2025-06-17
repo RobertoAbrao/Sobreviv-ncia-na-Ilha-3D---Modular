@@ -28,7 +28,7 @@ let activeCampfire = null;
 let activeShelter = null;
 
 let ambientLight, directionalLight;
-let dayTime = 8;
+let dayTime = 8; // Inicia o dia às 8h por padrão
 const TOTAL_CYCLE_SECONDS = 480;
 let isNight = false;
 let isRaining = false;
@@ -171,9 +171,10 @@ export async function initializeGame(user) {
             worldSeed = docSnap.data().worldSeed;
             logMessage(`Semente do mundo carregada para ${user.email}!`, 'success');
             
-            // Carrega o estado do jogador
+            // Carrega o estado do jogador e o dayTime
             if (docSnap.data().playerState) {
                 player.loadState(docSnap.data().playerState);
+                dayTime = docSnap.data().dayTime !== undefined ? docSnap.data().dayTime : 8; // Carrega dayTime
                 logMessage(`Progresso do jogador carregado!`, 'success');
             }
         } else {
@@ -181,7 +182,7 @@ export async function initializeGame(user) {
             worldSeed = Math.random();
             logMessage(`Nova semente de mundo gerada para ${user.email}.`, 'info');
             try {
-                await setDoc(playerDocRef, { worldSeed: worldSeed, playerState: player.saveState() }, { merge: true });
+                await setDoc(playerDocRef, { worldSeed: worldSeed, playerState: player.saveState(), dayTime: dayTime }, { merge: true });
                 logMessage('Seu novo mundo foi salvo na nuvem!', 'success');
             } catch (error) {
                 console.error("Erro ao salvar nova semente:", error);
@@ -273,7 +274,8 @@ async function savePlayerState() {
     // MODIFICADO: Agora também salva a semente do mundo junto com o estado do jogador.
     const fullState = {
         playerState: playerState,
-        worldSeed: world.seed 
+        worldSeed: world.seed,
+        dayTime: dayTime // SALVANDO O HORÁRIO DO DIA
     };
 
     try {
