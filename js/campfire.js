@@ -1,3 +1,4 @@
+// js/campfire.js
 import * as THREE from 'three';
 
 // Custo de recursos para construir a fogueira
@@ -46,3 +47,13 @@ export class Campfire {
         this.light.intensity = 2.5 + Math.sin(this.time * 10) * 0.5;
     }
 }
+
+// NOVO: Itens que podem ser cozidos na fogueira
+export const cookableItems = [
+    {
+        name: 'Carne Crua',
+        produces: 'Carne Cozida',
+        amount: 1,
+        time: 3000 // Tempo em ms para cozinhar
+    }
+];

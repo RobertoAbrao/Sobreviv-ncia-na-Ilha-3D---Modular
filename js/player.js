@@ -1,13 +1,19 @@
+// js/player.js
 export default class Player {
     constructor() {
         this.health = 100;
         this.hunger = 0;
         this.thirst = 0;
-        this.inventory = {}; // O inventário começa vazio
-        this.hasCampfire = false; // NOVO: Flag para indicar se o jogador tem uma fogueira
-        this.hasAxe = false; // NOVO: Flag para indicar se o jogador tem um machado
-        this.hasPickaxe = false; // NOVO: Flag para indicar se o jogador tem uma picareta
-        this.equippedTool = null; // NOVO: Ferramenta atualmente equipada (null, 'Machado', 'Picareta')
+        this.inventory = { // Adicione carne crua e cozida aqui
+            'Madeira': 0,
+            'Pedra': 0,
+            'Carne Crua': 0, // NOVO
+            'Carne Cozida': 0 // NOVO
+        }; 
+        this.hasCampfire = false;
+        this.hasAxe = false;
+        this.hasPickaxe = false;
+        this.equippedTool = null;
     }
 
     // Adiciona um item ao inventário
@@ -37,6 +43,20 @@ export default class Player {
             this.inventory[item] -= cost[item];
         }
         return true;
+    }
+
+    // NOVO: Função para consumir carne cozida
+    eatCookedMeat(logMessageCallback) {
+        if (this.inventory['Carne Cozida'] > 0) {
+            this.inventory['Carne Cozida']--;
+            this.hunger = Math.max(0, this.hunger - 40); // Reduz a fome
+            this.health = Math.min(100, this.health + 5); // Regenera um pouco de vida
+            logMessageCallback('Você comeu carne cozida. Que delícia!', 'success');
+            return true;
+        } else {
+            logMessageCallback('Você não tem carne cozida para comer.', 'warning');
+            return false;
+        }
     }
 
     // A lógica do "tick" do jogo que afeta o jogador

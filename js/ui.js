@@ -1,3 +1,4 @@
+// js/ui.js
 const healthBar = document.getElementById('health-bar');
 const hungerBar = document.getElementById('hunger-bar');
 const thirstBar = document.getElementById('thirst-bar');
@@ -6,22 +7,24 @@ const hungerValue = document.getElementById('hunger-value');
 const thirstValue = document.getElementById('thirst-value');
 const messageLog = document.getElementById('message-log');
 const inventoryList = document.getElementById('inventory-list');
-const craftingModal = document.getElementById('crafting-modal'); // NOVO
-const craftingList = document.getElementById('crafting-list'); // NOVO
+const craftingModal = document.getElementById('crafting-modal');
+const craftingList = document.getElementById('crafting-list');
 
-// NOVO: Elementos da hotbar
+// Elementos da hotbar
 const hotbarSlot1 = document.getElementById('hotbar-slot-1');
 const hotbarSlot2 = document.getElementById('hotbar-slot-2');
 const hotbarItemIcon1 = hotbarSlot1.querySelector('.hotbar-item-icon');
 const hotbarItemIcon2 = hotbarSlot2.querySelector('.hotbar-item-icon');
 
-// NOVO: Emojis para os itens
+// Emojis para os itens
 const itemEmojis = {
     'Madeira': '🪵',
     'Pedra': '🪨',
-    'Fogueira': '🔥', // NOVO
-    'Machado': '🪓', // NOVO
-    'Picareta': '⛏️'  // NOVO
+    'Fogueira': '🔥',
+    'Machado': '🪓',
+    'Picareta': '⛏️',
+    'Carne Crua': '🥩',
+    'Carne Cozida': '🍖'
 };
 
 export function updateUI(player) {
@@ -34,23 +37,23 @@ export function updateUI(player) {
     thirstValue.textContent = `${Math.ceil(player.thirst)}/100`;
 
     // Atualiza Inventário
-    inventoryList.innerHTML = ''; 
+    inventoryList.innerHTML = '';
     for (const [item, quantity] of Object.entries(player.inventory)) {
         if (quantity > 0) {
-            const emoji = itemEmojis[item] || '❔'; // Usa um emoji padrão se não encontrar
+            const emoji = itemEmojis[item] || '❔';
             const itemEl = document.createElement('p');
             itemEl.textContent = `${emoji} ${item}: ${quantity}`;
             inventoryList.appendChild(itemEl);
         }
     }
-    // NOVO: Exibe a fogueira no inventário se o jogador a tiver
+    // Exibe a fogueira no inventário se o jogador a tiver
     if (player.hasCampfire) {
         const campfireEl = document.createElement('p');
         campfireEl.textContent = `${itemEmojis['Fogueira']} Fogueira (Construída)`;
         inventoryList.appendChild(campfireEl);
     }
 
-    // NOVO: Atualiza a Hotbar
+    // Atualiza a Hotbar
     updateHotbar(player);
 }
 
@@ -68,25 +71,24 @@ export function logMessage(message, type = 'normal') {
     messageLog.insertBefore(logEntry, messageLog.firstChild);
 }
 
-// NOVO: Funções para o modal de crafting
+// Funções para o modal de crafting
 export function toggleCraftingModal(show) {
     if (show) {
-        craftingModal.classList.remove('hidden'); // Garante que a classe 'hidden' seja removida
-        setTimeout(() => { // Pequeno atraso para permitir que 'hidden' seja removido antes de adicionar 'show'
+        craftingModal.classList.remove('hidden');
+        setTimeout(() => {
             craftingModal.classList.add('show');
         }, 10);
     } else {
         craftingModal.classList.remove('show');
-        setTimeout(() => { // Pequeno atraso para a transição terminar antes de adicionar 'hidden'
+        setTimeout(() => {
             craftingModal.classList.add('hidden');
-        }, 300); // Duração da transição CSS
+        }, 300);
     }
 }
 
 export function renderCraftingList(craftableItems, player, onCraft) {
     craftingList.innerHTML = '';
     for (const item of craftableItems) {
-        // Ajuste para desabilitar o crafting se já tiver a ferramenta
         const hasTool = (item.name === 'Machado' && player.hasAxe) || (item.name === 'Picareta' && player.hasPickaxe);
         const canCraft = player.hasResources(item.cost) && (!item.requires || player[item.requires]) && !hasTool;
 
@@ -101,11 +103,9 @@ export function renderCraftingList(craftableItems, player, onCraft) {
         if (item.requires) {
             requirementsHtml += `(Requer: ${item.requires === 'hasCampfire' ? 'Fogueira' : item.requires})`;
         }
-        // Adiciona mensagem se já tiver a ferramenta
         if (hasTool) {
             requirementsHtml = `Você já possui ${item.name}!`;
         }
-
 
         itemEl.innerHTML = `
             <div>
@@ -120,11 +120,30 @@ export function renderCraftingList(craftableItems, player, onCraft) {
             itemEl.querySelector('button').addEventListener('click', () => onCraft(item));
         }
     }
+
+    // REMOVIDO: Botão "Comer Carne Cozida" do modal de crafting
+    /*
+    const eatMeatButton = document.createElement('button');
+    eatMeatButton.textContent = '🍴 Comer Carne Cozida';
+    eatMeatButton.className = 'crafting-item button bg-lime-600 hover:bg-lime-700 text-white p-3 rounded-lg w-full mt-4';
+    eatMeatButton.onclick = () => {
+        if (player.eatCookedMeat(logMessage)) {
+            updateUI(player);
+        }
+    };
+    if (player.inventory['Carne Cozida'] === 0) {
+        eatMeatButton.disabled = true;
+        eatMeatButton.classList.add('opacity-50', 'cursor-not-allowed');
+    } else {
+        eatMeatButton.disabled = false;
+        eatMeatButton.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+    craftingList.appendChild(eatMeatButton);
+    */
 }
 
-// NOVO: Função para atualizar a hotbar visualmente
+// Função para atualizar a hotbar visualmente
 function updateHotbar(player) {
-    // Slot 1: Machado
     if (player.hasAxe) {
         hotbarItemIcon1.textContent = itemEmojis['Machado'];
         hotbarItemIcon1.style.opacity = 1;
@@ -133,16 +152,15 @@ function updateHotbar(player) {
         hotbarItemIcon1.style.opacity = 0.5;
     }
 
-    // Slot 2: Picareta
     if (player.hasPickaxe) {
         hotbarItemIcon2.textContent = itemEmojis['Picareta'];
         hotbarItemIcon2.style.opacity = 1;
     } else {
         hotbarItemIcon2.textContent = '';
         hotbarItemIcon2.style.opacity = 0.5;
+    ;
     }
 
-    // Marca o slot selecionado
     hotbarSlot1.classList.remove('selected');
     hotbarSlot2.classList.remove('selected');
 
@@ -153,10 +171,8 @@ function updateHotbar(player) {
     }
 }
 
-// NOVO: Função para selecionar uma ferramenta
+// Função para selecionar uma ferramenta
 export function selectTool(player, toolName) {
-    // Se o jogador já tem a ferramenta e ela não está equipada, equipa
-    // Se a ferramenta já está equipada, desequipa
     if (toolName === 'Machado' && player.hasAxe) {
         player.equippedTool = (player.equippedTool === 'Machado') ? null : 'Machado';
         logMessage(player.equippedTool === 'Machado' ? 'Machado equipado.' : 'Machado desequipado.', 'info');
@@ -165,7 +181,7 @@ export function selectTool(player, toolName) {
         logMessage(player.equippedTool === 'Picareta' ? 'Picareta equipada.' : 'Picareta desequipado.', 'info');
     } else {
         logMessage(`Você não possui ${toolName}.`, 'warning');
-        player.equippedTool = null; // Garante que nada está equipado se tentar equipar algo que não tem
+        player.equippedTool = null;
     }
-    updateUI(player); // Atualiza a hotbar para mostrar a seleção
+    updateUI(player);
 }

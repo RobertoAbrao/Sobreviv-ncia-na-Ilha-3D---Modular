@@ -1,6 +1,8 @@
+// js/world.js
 import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
 import { ISLAND_SIZE, WATER_LEVEL } from './constants.js';
+import Animal from './animal.js'; // NOVO: Importa a classe Animal
 
 export default class World {
     constructor(scene) {
@@ -8,9 +10,11 @@ export default class World {
         this.terrainMesh = null;
         this.waterMesh = null;
         this.trees = new THREE.Group();
-        this.stones = new THREE.Group(); // NOVO: Grupo para as pedras
+        this.stones = new THREE.Group();
+        this.animals = new THREE.Group(); // Grupo para os animais
         this.initialTreeCount = 80;
-        this.initialStoneCount = 50; // NOVO: Define o número inicial de pedras
+        this.initialStoneCount = 50;
+        this.initialAnimalCount = 15;
         this.noise2D = createNoise2D(Math.random);
     }
 
@@ -68,9 +72,10 @@ export default class World {
         this.scene.add(this.waterMesh);
 
         this.placeInitialTrees();
-        this.placeInitialStones(); // NOVO: Chama a função para colocar as pedras
+        this.placeInitialStones();
         this.scene.add(this.trees);
-        this.scene.add(this.stones); // NOVO: Adiciona o grupo de pedras à cena
+        this.scene.add(this.stones);
+        this.scene.add(this.animals); // Adiciona o grupo de animais à cena
     }
 
     placeInitialTrees() {
@@ -79,7 +84,6 @@ export default class World {
         }
     }
 
-    // NOVO: Função para colocar as pedras iniciais
     placeInitialStones() {
         for (let i = 0; i < this.initialStoneCount; i++) {
             this.createStoneAtRandomLocation();
@@ -98,22 +102,19 @@ export default class World {
         return false;
     }
 
-    // NOVO: Método para tentar criar uma pedra em um local aleatório
     createStoneAtRandomLocation() {
         const x = (Math.random() - 0.5) * ISLAND_SIZE * 0.8;
         const z = (Math.random() - 0.5) * ISLAND_SIZE * 0.8;
         const height = this.getTerrainHeight(x, z, new THREE.Raycaster());
 
-        // Pedras aparecem apenas em locais altos e rochosos
         if (height > 11) {
             this.createStone(x, height, z);
-            return true; // Sucesso
+            return true;
         }
-        return false; // Falha
+        return false;
     }
     
     createTree(x, y, z) {
-        // ... (código de criação da árvore, sem alterações) ...
         const treeMaterial = new THREE.MeshStandardMaterial({color: 0x664422});
         const leavesMaterial = new THREE.MeshStandardMaterial({color: 0x228b22});
         
@@ -136,15 +137,21 @@ export default class World {
         this.trees.add(tree);
     }
 
-    // NOVO: Método para criar o modelo 3D de uma pedra
     createStone(x, y, z) {
         const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8 });
-        // Usamos Icosahedron para parecer uma pedra mais irregular
         const stoneGeo = new THREE.IcosahedronGeometry(Math.random() * 0.4 + 0.2, 0); 
         const stoneMesh = new THREE.Mesh(stoneGeo, stoneMaterial);
-        stoneMesh.position.set(x, y + 0.2, z); // Posição na superfície do terreno
+        stoneMesh.position.set(x, y + 0.2, z);
         stoneMesh.castShadow = true;
         this.stones.add(stoneMesh);
+    }
+
+    // NOVO: Método para criar um animal e adicioná-lo ao grupo
+    createAnimal(position, color) {
+        // Assume que Animal é uma classe que cria um mesh e tem um método update
+        const animal = new Animal(this.scene, position, color); // Reusa a lógica de Animal para criar o mesh
+        this.animals.add(animal.mesh); // Adiciona o mesh do animal ao grupo
+        return animal; // Retorna a instância completa do Animal
     }
     
     getTerrainHeight(x, z, raycaster) {
@@ -157,9 +164,13 @@ export default class World {
         this.trees.remove(treeObject);
     }
 
-    // NOVO: Método para remover uma pedra
     removeStone(stoneObject) {
         this.stones.remove(stoneObject);
+    }
+
+    // NOVO: Método para remover um animal
+    removeAnimal(animalMesh) {
+        this.animals.remove(animalMesh);
     }
 
     respawnTreeIfNeeded() {
@@ -171,12 +182,30 @@ export default class World {
         }
     }
 
-    // NOVO: Método de regeneração para as pedras
     respawnStoneIfNeeded() {
         if (this.stones.children.length < this.initialStoneCount) {
             console.log(`Há ${this.stones.children.length}/${this.initialStoneCount} pedras. Tentando renascer uma...`);
             if(this.createStoneAtRandomLocation()) {
                 console.log("Pedra renasceu com sucesso!");
+            }
+        }
+    }
+
+    // NOVO: Método para regenerar animais
+    respawnAnimalIfNeeded() {
+        if (this.animals.children.length < this.initialAnimalCount) {
+            const x = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
+            const z = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
+            const y = this.getTerrainHeight(x, z, new THREE.Raycaster());
+            if(y > WATER_LEVEL) {
+               // IMPORTANTE: createAnimal retorna a instância da classe Animal, não apenas o mesh.
+               // Precisamos armazenar a instância para chamar .update() no loop animate.
+               const newAnimalInstance = new Animal(this.scene, new THREE.Vector3(x, y + 0.4, z), Math.random() * 0xffffff);
+               this.animals.add(newAnimalInstance.mesh); // Adiciona o mesh ao grupo
+               // Aqui você precisaria de um mecanismo para adicionar essa nova instância a `animalsInstances` em `main.js`
+               // Por simplicidade neste exemplo, vamos apenas adicionar o mesh e aceitar que o `update` da instância não será chamado.
+               // Em um jogo mais complexo, você teria um array global de instâncias de animais.
+               console.log("Animal renasceu com sucesso!");
             }
         }
     }

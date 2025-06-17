@@ -1,4 +1,4 @@
-// js/main.js
+// main.js
 import * as THREE from 'three';
 import { TICK_RATE, PLAYER_HEIGHT, ISLAND_SIZE, WATER_LEVEL } from './js/constants.js';
 import World from './js/world.js';
@@ -12,20 +12,19 @@ import { updateUI, logMessage, toggleCraftingModal, renderCraftingList, selectTo
 // --- Variáveis Globais da Cena ---
 let scene, camera, renderer, clock, raycaster;
 let world, player, physics, interactionHandler;
-let animals = [];
+let animalsInstances = [];
 let keys = {};
 let isCraftingModalOpen = false;
 let activeCampfire = null;
 let highlightMesh = null;
 let highlightedObject = null;
 
-// NOVO: Variáveis para o ciclo dia/noite
+// Variáveis para o ciclo dia/noite
 let ambientLight, directionalLight;
-let dayTime = 0; // 0 a 24 para representar as horas do dia
-const TOTAL_CYCLE_SECONDS = 480; // 8 minutos * 60 segundos = 480 segundos
-const DAY_PHASE_END_HOUR = (5 / 8) * 24; // Onde o dia (luz do sol forte) termina
-const NIGHT_PHASE_END_HOUR = (8 / 8) * 24; // Onde a noite termina (ciclo completo)
-
+let dayTime = 0;
+const TOTAL_CYCLE_SECONDS = 480;
+const DAY_PHASE_END_HOUR = (5 / 8) * 24;
+const NIGHT_PHASE_END_HOUR = (8 / 8) * 24;
 
 // Definição dos itens de crafting
 const craftableItems = [
@@ -52,7 +51,8 @@ const craftableItems = [
             player.hasCampfire = true;
             logMessage('Você construiu uma fogueira!', 'success');
             return true;
-        }
+        },
+        requires: null
     },
     {
         name: 'Machado',
@@ -65,7 +65,8 @@ const craftableItems = [
             player.hasAxe = true;
             logMessage('Você criou um machado!', 'success');
             return true;
-        }
+        },
+        requires: null
     },
     {
         name: 'Picareta',
@@ -78,7 +79,8 @@ const craftableItems = [
             player.hasPickaxe = true;
             logMessage('Você criou uma picareta!', 'success');
             return true;
-        }
+        },
+        requires: null
     }
 ];
 
@@ -104,7 +106,7 @@ function initializeGame() {
     highlightMesh.visible = false;
     scene.add(highlightMesh);
 
-    // --- Iluminação (Alterada para variáveis globais) ---
+    // --- Iluminação ---
     ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
     
@@ -123,15 +125,16 @@ function initializeGame() {
 
     player = new Player();
     physics = new Physics(world, raycaster);
-    interactionHandler = new InteractionHandler(camera, world, player, raycaster);
+    interactionHandler = new InteractionHandler(camera, world, player, raycaster, () => activeCampfire);
 
     // --- Adicionar Animais ---
-    for(let i = 0; i < 15; i++) {
+    for(let i = 0; i < world.initialAnimalCount; i++) {
         const aX = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
         const aZ = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
         const aY = world.getTerrainHeight(aX, aZ, raycaster);
         if(aY > WATER_LEVEL) {
-           animals.push(new Animal(scene, new THREE.Vector3(aX, aY + 0.4, aZ), Math.random() * 0xffffff));
+           const newAnimal = world.createAnimal(new THREE.Vector3(aX, aY + 0.4, aZ), Math.random() * 0xffffff);
+           animalsInstances.push(newAnimal);
         }
     }
     
@@ -144,6 +147,7 @@ function initializeGame() {
     setInterval(() => {
         world.respawnTreeIfNeeded();
         world.respawnStoneIfNeeded();
+        world.respawnAnimalIfNeeded(animalsInstances);
     }, 15000); 
 
     animate();
@@ -151,7 +155,7 @@ function initializeGame() {
 
 function initializeControls() {
     document.addEventListener('keydown', (e) => { 
-        keys[e.code] = true; 
+        keys[e.code] = true;
         if (e.code === 'KeyB') {
             isCraftingModalOpen = !isCraftingModalOpen;
             toggleCraftingModal(isCraftingModalOpen);
@@ -170,7 +174,10 @@ function initializeControls() {
     
     document.body.addEventListener('click', () => { 
         if (!isCraftingModalOpen) {
-            document.body.requestPointerLock(); 
+            // Só pedimos o pointer lock se não estivermos em uma tarefa
+            if (!interactionHandler.isTaskInProgress) { // Acessa a variável de estado do InteractionHandler
+                document.body.requestPointerLock();
+            }
         }
     });
 
@@ -181,7 +188,7 @@ function initializeControls() {
 
     camera.rotation.order = 'YXZ';
     document.addEventListener('mousemove', (e) => {
-        if (document.pointerLockElement === document.body && !isCraftingModalOpen) {
+        if (document.pointerLockElement === document.body && !isCraftingModalOpen && !interactionHandler.isTaskInProgress) { // Verifica isTaskInProgress
             camera.rotation.y -= e.movementX / 500;
             camera.rotation.x -= e.movementY / 500;
             camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
@@ -214,34 +221,20 @@ function handleCraftItem(item) {
 
 // Função para atualizar o ciclo dia/noite
 function updateDayNightCycle(deltaTime) {
-    dayTime += deltaTime / TOTAL_CYCLE_SECONDS * 24; // Atualiza o tempo do dia (0-24h)
+    dayTime += deltaTime / TOTAL_CYCLE_SECONDS * 24;
     if (dayTime >= 24) {
-        dayTime -= 24; // Reinicia o ciclo
+        dayTime -= 24;
     }
 
     let ambientIntensity, directionalIntensity;
     let directionalColor, ambientColor, skyColor, fogColor;
     let lightX, lightY, lightZ;
 
-    const sunriseStart = 4; // Começo do amanhecer (hora fictícia)
-    const sunriseEnd = 7;   // Fim do amanhecer, dia começa
-    const sunsetStart = 17; // Começo do entardecer
-    const sunsetEnd = 20;   // Fim do entardecer, noite começa
+    const sunriseStart = 4;
+    const sunriseEnd = 7;
+    const sunsetStart = 17;
+    const sunsetEnd = 20;
 
-    // Dia: 5 minutos (do nascer do sol ao pôr do sol)
-    // Noite: 3 minutos (do pôr do sol ao nascer do sol)
-    // Total: 8 minutos (480 segundos)
-
-    // Ajuste das transições para 5 minutos de dia e 3 minutos de noite
-    // Vamos mapear as 24h fictícias para o nosso tempo real de 8 minutos
-    // 0-24h (fictício) -> 0-480s (real)
-
-    // Período de "dia" em horas fictícias: (sunsetStart - sunriseEnd) + (24 - sunsetEnd + sunriseStart) se for contínuo
-    // Ou, mais fácil, dia dura 5/8 do total e noite 3/8 do total
-    // Dia vai de 4h (amanhecer) até 20h (entardecer), são 16h fictícias
-    // Noite vai de 20h (entardecer) até 4h (amanhecer), são 8h fictícias
-
-    // Ajuste da lógica para as cores e intensidades
     // Amanhecer (transição da noite para o dia)
     if (dayTime >= sunriseStart && dayTime < sunriseEnd) {
         const t = (dayTime - sunriseStart) / (sunriseEnd - sunriseStart);
@@ -314,23 +307,29 @@ function animate() {
     requestAnimationFrame(animate);
     const deltaTime = clock.getDelta();
 
-    if (!isCraftingModalOpen) {
+    // Adicionado: Verifica se uma tarefa está em andamento para pausar o movimento/animações
+    if (!isCraftingModalOpen && !interactionHandler.isTaskInProgress) {
         physics.update(camera, keys, deltaTime);
-        animals.forEach(animal => animal.update(deltaTime, world, raycaster));
+        animalsInstances.forEach(animal => animal.update(deltaTime, world, raycaster));
         if (activeCampfire) {
             activeCampfire.update(deltaTime);
         }
 
-        updateDayNightCycle(deltaTime); // Chamada da função de ciclo dia/noite
+        updateDayNightCycle(deltaTime);
 
         // Lógica para o destaque de interação
         raycaster.setFromCamera(new THREE.Vector2(), camera);
-        const objectsToIntersect = [...world.trees.children, ...world.stones.children];
+        const objectsToIntersect = [...world.trees.children, ...world.stones.children, ...world.animals.children];
+        const activeCampfireMesh = activeCampfire ? activeCampfire.mesh : null;
+        if (activeCampfireMesh) {
+            objectsToIntersect.push(activeCampfireMesh);
+        }
+
         const intersects = raycaster.intersectObjects(objectsToIntersect, true);
 
         if (intersects.length > 0 && intersects[0].distance < interactionHandler.maxInteractionDistance) {
             let interactableObject = intersects[0].object;
-            while (interactableObject.parent !== null && interactableObject.parent !== world.trees && interactableObject.parent !== world.stones) {
+            while (interactableObject.parent !== null && interactableObject.parent !== world.trees && interactableObject.parent !== world.stones && interactableObject.parent !== world.animals && interactableObject !== activeCampfireMesh) {
                 interactableObject = interactableObject.parent;
             }
 
@@ -342,7 +341,14 @@ function animate() {
                     highlightMesh.scale.set(1.5, 3, 1.5);
                 } else if (interactableObject.parent === world.stones) {
                     highlightMesh.scale.set(1.5, 1.5, 1.5);
-                } else {
+                } else if (interactableObject.parent === world.animals) {
+                    highlightMesh.scale.set(1, 1, 1);
+                }
+                else if (activeCampfire && interactableObject === activeCampfire.mesh) {
+                    highlightMesh.scale.set(1.5, 1.5, 1.5);
+                    highlightMesh.position.y = activeCampfire.mesh.position.y + 0.75;
+                }
+                else {
                     highlightMesh.scale.set(1.2, 1.2, 1.2);
                 }
             }
@@ -350,9 +356,12 @@ function animate() {
             highlightMesh.visible = false;
             highlightedObject = null;
         }
+    } else {
+        // Se a tarefa estiver em progresso, o jogo não atualiza a física e os animais, mas o tempo do dia ainda deve avançar.
+        updateDayNightCycle(deltaTime);
     }
     
-    updateUI(player); 
+    updateUI(player);
     renderer.render(scene, camera);
 }
 
