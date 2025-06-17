@@ -7,8 +7,12 @@ import Physics from './js/physics.js';
 import Animal from './js/animal.js';
 import InteractionHandler from './js/interaction.js';
 import { Campfire, campfireCost } from './js/campfire.js';
-import { Shelter, shelterCost } from './js/shelter.js'; // NOVO: Importa Shelter e shelterCost
-import { updateUI, logMessage, toggleCraftingModal, renderCraftingList, selectTool, toggleInteractionModal, renderInteractionList, toggleCampfireModal, toggleShelterModal, renderShelterOptions } from './js/ui.js'; // NOVO: Importa funções do abrigo
+import { Shelter, shelterCost } from './js/shelter.js';
+import { updateUI, logMessage, toggleCraftingModal, renderCraftingList, selectTool, toggleInteractionModal, renderInteractionList, toggleCampfireModal, toggleShelterModal, renderShelterOptions } from './js/ui.js';
+import { setInitializeGameCallback } from './js/auth.js';
+
+// Importa Firestore (para salvar/carregar dados do jogador)
+import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 // --- Variáveis Globais da Cena ---
 let scene, camera, renderer, clock, raycaster;
@@ -16,21 +20,25 @@ let world, player, physics, interactionHandler;
 let animalsInstances = [];
 let keys = {};
 let isCraftingModalOpen = false;
-let isInteractionModalOpen = false; 
-let isCampfireModalOpen = false; 
-let isShelterModalOpen = false; // NOVO: Flag para o modal do abrigo
-let activeCampfire = null;
-let activeShelter = null; // NOVO: Abrigo ativo
+let isInteractionModalOpen = false;
+let isCampfireModalOpen = false;
+let isShelterModalOpen = false;
 let highlightMesh = null;
 let highlightedObject = null;
+let activeCampfire = null; // Definir para evitar erro de referência
+let activeShelter = null; // Definir para evitar erro de referência
 
 // Variáveis para o ciclo dia/noite e clima
 let ambientLight, directionalLight;
 let dayTime = 0;
-const TOTAL_CYCLE_SECONDS = 480; // Duração de um ciclo completo em segundos
-let isNight = false; // NOVO: Variável para controlar se é noite
-let isRaining = false; // NOVO: Variável para controlar se está chovendo
-let rainParticles = null; // NOVO: Para o efeito de chuva
+const TOTAL_CYCLE_SECONDS = 480;
+let isNight = false;
+let isRaining = false;
+let rainParticles = null;
+
+// Variável global para armazenar o objeto de usuário logado
+let currentUser = null;
+let db; // Variável para o Firestore
 
 // Definição dos itens de crafting
 const craftableItems = [
@@ -44,17 +52,20 @@ const craftableItems = [
             }
 
             const position = camera.position.clone();
+            // A altura da fogueira deve ser ligeiramente acima do terreno para não ficar "enterrada"
             const groundY = world.getTerrainHeight(position.x, position.z, raycaster);
             if (groundY < WATER_LEVEL) {
                 logMessage('Não é possível construir na água!', 'danger');
                 return false;
             }
-            position.y = groundY;
+            position.y = groundY + 0.1; // Adiciona um pequeno offset para a fogueira não afundar
 
             const newCampfire = new Campfire(position);
             scene.add(newCampfire.mesh);
             activeCampfire = newCampfire;
             player.hasCampfire = true;
+            // SALVA A POSIÇÃO DA FOGUEIRA NO OBJETO PLAYER PARA PERSISTÊNCIA
+            player.campfireLocation = { x: position.x, y: position.y, z: position.z };
             logMessage('Você construiu uma fogueira!', 'success');
             return true;
         },
@@ -88,7 +99,6 @@ const craftableItems = [
         },
         requires: null
     },
-    // NOVO: Receita para o Abrigo
     {
         name: 'Abrigo',
         cost: shelterCost,
@@ -100,7 +110,7 @@ const craftableItems = [
 
             const position = camera.position.clone();
             const groundY = world.getTerrainHeight(position.x, position.z, raycaster);
-            if (groundY < WATER_LEVEL + 2) { // Não pode construir muito perto da água
+            if (groundY < WATER_LEVEL + 2) {
                 logMessage('Não é possível construir o abrigo tão perto da água!', 'danger');
                 return false;
             }
@@ -113,23 +123,29 @@ const craftableItems = [
             logMessage('Você construiu um abrigo! Um lugar para se proteger.', 'success');
             return true;
         },
-        requires: null // Não requer fogueira para construir abrigo
+        requires: null
     }
 ];
 
-function initializeGame() {
+// Função que inicia o jogo (chamada após login ou jogar offline)
+export function initializeGame(user) {
+    currentUser = user;
+    db = getFirestore();
+
+    console.log("Iniciando jogo para o usuário:", currentUser.email || "Offline");
+
     // --- Configuração Básica ---
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87ceeb);
     scene.fog = new THREE.Fog(0x87ceeb, 40, ISLAND_SIZE);
-    
+
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game-canvas'), antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = true;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    
+
     clock = new THREE.Clock();
     raycaster = new THREE.Raycaster();
 
@@ -142,7 +158,7 @@ function initializeGame() {
     // --- Iluminação ---
     ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
-    
+
     directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
     directionalLight.position.set(50, 100, 50);
     directionalLight.castShadow = true;
@@ -158,8 +174,44 @@ function initializeGame() {
 
     player = new Player();
     physics = new Physics(world, raycaster);
-    // Passa a fogueira ativa e o abrigo ativo para o InteractionHandler
-    interactionHandler = new InteractionHandler(camera, world, player, raycaster, () => activeCampfire, () => activeShelter); // NOVO
+    interactionHandler = new InteractionHandler(camera, world, player, raycaster, () => activeCampfire, () => activeShelter);
+
+    // Carregar estado do jogador do Firestore
+    if (user.uid !== 'offline-player') {
+        const playerDocRef = doc(db, "players", user.uid);
+        getDoc(playerDocRef).then(docSnap => {
+            if (docSnap.exists() && docSnap.data().playerState) {
+                player.loadState(docSnap.data().playerState);
+                logMessage(`Progresso de ${user.email} carregado!`, 'success');
+
+                // LÓGICA CRUCIAL: RECRIAR A FOGUEIRA SE ESTIVER SALVA
+                if (player.hasCampfire && player.campfireLocation) {
+                    const campfirePos = new THREE.Vector3(
+                        player.campfireLocation.x,
+                        player.campfireLocation.y,
+                        player.campfireLocation.z
+                    );
+                    const loadedCampfire = new Campfire(campfirePos);
+                    scene.add(loadedCampfire.mesh);
+                    activeCampfire = loadedCampfire; // Atribui a fogueira carregada à variável global
+                    logMessage('Fogueira carregada do progresso salvo!', 'info');
+                }
+
+            } else {
+                logMessage(`Nenhum progresso salvo para ${user.email}. Iniciando novo jogo.`, 'info');
+                // Salvar o estado inicial do jogador no Firestore
+                savePlayerState();
+            }
+            updateUI(player); // Atualizar a UI após carregar/definir o estado
+        }).catch(error => {
+            console.error("Erro ao carregar dados do jogador:", error);
+            logMessage("Erro ao carregar seu progresso.", 'danger');
+        });
+    } else {
+        // Modo offline, não tenta carregar do Firestore
+        logMessage("Jogando offline. Progresso não será salvo.", 'info');
+        updateUI(player);
+    }
 
     // --- Adicionar Animais ---
     for(let i = 0; i < world.initialAnimalCount; i++) {
@@ -171,31 +223,46 @@ function initializeGame() {
            animalsInstances.push(newAnimal);
         }
     }
-    
+
     // --- Iniciar Controles e Loops ---
     initializeControls();
     setInterval(() => {
-        // Verifica se o jogador está perto de um abrigo ou fogueira
         const isNearShelterOrCampfire = checkProximityToShelterOrCampfire();
-        player.gameTick(logMessage, isNight, isRaining, isNearShelterOrCampfire); // Passa os novos parâmetros
+        player.gameTick(logMessage, isNight, isRaining, isNearShelterOrCampfire);
+        // Salva estado do jogador periodicamente
+        if (currentUser.uid !== 'offline-player') {
+             savePlayerState();
+        }
     }, TICK_RATE);
     logMessage('Você acordou em uma ilha. Sobreviva.', 'info');
 
-    // Loop de regeneração do mundo
     setInterval(() => {
         world.respawnTreeIfNeeded();
         world.respawnStoneIfNeeded();
         world.respawnAnimalIfNeeded(animalsInstances);
-    }, 15000); 
+    }, 15000);
 
-    // NOVO: Loop de clima
-    setInterval(updateWeather, 60000); // A cada 1 minuto (60 segundos)
-    
+    setInterval(updateWeather, 60000);
+
     animate();
 }
 
+// Função para salvar o estado do jogador no Firestore
+async function savePlayerState() {
+    if (!currentUser || currentUser.uid === 'offline-player') return;
+
+    const playerState = player.saveState();
+    try {
+        await setDoc(doc(db, "players", currentUser.uid), { playerState }, { merge: true });
+        // logMessage('Progresso salvo automaticamente!', 'info'); // Opcional, pode ser muito spam
+    } catch (error) {
+        console.error("Erro ao salvar progresso:", error);
+        // logMessage('Erro ao salvar progresso.', 'danger');
+    }
+}
+
 function initializeControls() {
-    document.addEventListener('keydown', (e) => { 
+    document.addEventListener('keydown', (e) => {
         keys[e.code] = true;
         if (e.code === 'KeyB') {
             isCraftingModalOpen = !isCraftingModalOpen;
@@ -204,7 +271,6 @@ function initializeControls() {
                 document.exitPointerLock();
                 renderCraftingList(craftableItems, player, handleCraftItem);
             }
-            // NOVO: Fecha os outros modais se o de crafting abrir
             if (isCraftingModalOpen && isInteractionModalOpen) {
                 isInteractionModalOpen = false;
                 toggleInteractionModal(isInteractionModalOpen);
@@ -213,21 +279,18 @@ function initializeControls() {
                 isCampfireModalOpen = false;
                 toggleCampfireModal(isCampfireModalOpen);
             }
-            if (isCraftingModalOpen && isShelterModalOpen) { // NOVO
+            if (isCraftingModalOpen && isShelterModalOpen) {
                 isShelterModalOpen = false;
                 toggleShelterModal(isShelterModalOpen);
             }
         }
-        // NOVO: Adicionar listener para a tecla 'H'
         if (e.code === 'KeyH') {
             isInteractionModalOpen = !isInteractionModalOpen;
             toggleInteractionModal(isInteractionModalOpen);
             if (isInteractionModalOpen) {
                 document.exitPointerLock();
-                // Função que renderiza os itens de interação (comer/beber)
-                renderInteractionList(player, handlePlayerInteraction); 
+                renderInteractionList(player, handlePlayerInteraction);
             }
-            // NOVO: Fecha os outros modais se o de interação abrir
             if (isInteractionModalOpen && isCraftingModalOpen) {
                 isCraftingModalOpen = false;
                 toggleCraftingModal(isCraftingModalOpen);
@@ -236,31 +299,28 @@ function initializeControls() {
                 isCampfireModalOpen = false;
                 toggleCampfireModal(isCampfireModalOpen);
             }
-            if (isInteractionModalOpen && isShelterModalOpen) { // NOVO
+            if (isInteractionModalOpen && isShelterModalOpen) {
                 isShelterModalOpen = false;
                 toggleShelterModal(isShelterModalOpen);
             }
         }
-        // NOVO: Adicionar listener para a tecla 'K' para o modal da fogueira
         if (e.code === 'KeyK') {
-            if (activeCampfire) { // Só abre se houver uma fogueira construída
+            if (activeCampfire) {
                 isCampfireModalOpen = !isCampfireModalOpen;
                 toggleCampfireModal(isCampfireModalOpen);
                 if (isCampfireModalOpen) {
                     document.exitPointerLock();
-                    // Chama a função para renderizar as opções da fogueira
                     interactionHandler.openCampfireMenu();
                 }
-                // NOVO: Fecha os outros modais se o da fogueira abrir
                 if (isCampfireModalOpen && isCraftingModalOpen) {
                     isCraftingModalOpen = false;
-                    toggleCraftingModal(isCraftingModalOpen);
+                    toggleCraftingModal(isCampfireModalOpen);
                 }
                 if (isCampfireModalOpen && isInteractionModalOpen) {
                     isInteractionModalOpen = false;
                     toggleInteractionModal(isInteractionModalOpen);
                 }
-                if (isCampfireModalOpen && isShelterModalOpen) { // NOVO
+                if (isCampfireModalOpen && isShelterModalOpen) {
                     isShelterModalOpen = false;
                     toggleShelterModal(isShelterModalOpen);
                 }
@@ -268,16 +328,14 @@ function initializeControls() {
                 logMessage('Você precisa construir uma fogueira primeiro (tecla B)!', 'warning');
             }
         }
-        // NOVO: Adicionar listener para a tecla 'L' para o modal do abrigo
         if (e.code === 'KeyL') {
-            if (player.hasShelter) { // Só abre se houver um abrigo construído
+            if (player.hasShelter) {
                 isShelterModalOpen = !isShelterModalOpen;
                 toggleShelterModal(isShelterModalOpen);
                 if (isShelterModalOpen) {
                     document.exitPointerLock();
                     renderShelterOptions(player, handleSleepInShelter);
                 }
-                // Fecha os outros modais se o do abrigo abrir
                 if (isShelterModalOpen && isCraftingModalOpen) {
                     isCraftingModalOpen = false;
                     toggleCraftingModal(isCraftingModalOpen);
@@ -302,9 +360,9 @@ function initializeControls() {
         }
     });
     document.addEventListener('keyup', (e) => { keys[e.code] = false; });
-    
-    document.body.addEventListener('click', () => { 
-        if (!isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen && !isShelterModalOpen) { // NOVO: Verifica todos os modais
+
+    document.body.addEventListener('click', () => {
+        if (!isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen && !isShelterModalOpen) {
             document.body.requestPointerLock();
         }
     });
@@ -314,19 +372,16 @@ function initializeControls() {
         toggleCraftingModal(false);
     });
 
-    // Listener para fechar o modal de interação
     document.getElementById('close-interaction-modal').addEventListener('click', () => {
         isInteractionModalOpen = false;
         toggleInteractionModal(false);
     });
 
-    // Listener para fechar o modal da fogueira
     document.getElementById('close-campfire-modal').addEventListener('click', () => {
         isCampfireModalOpen = false;
         toggleCampfireModal(false);
     });
 
-    // NOVO: Listener para fechar o modal do abrigo
     document.getElementById('close-shelter-modal').addEventListener('click', () => {
         isShelterModalOpen = false;
         toggleShelterModal(false);
@@ -334,7 +389,7 @@ function initializeControls() {
 
     camera.rotation.order = 'YXZ';
     document.addEventListener('mousemove', (e) => {
-        if (document.pointerLockElement === document.body && !isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen && !isShelterModalOpen) { // NOVO: Verifica todos
+        if (document.pointerLockElement === document.body && !isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen && !isShelterModalOpen) {
             camera.rotation.y -= e.movementX / 500;
             camera.rotation.x -= e.movementY / 500;
             camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
@@ -342,7 +397,7 @@ function initializeControls() {
     });
 
     document.addEventListener('mousedown', (e) => {
-        if (document.pointerLockElement === document.body && e.button === 0 && !isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen && !isShelterModalOpen) { // NOVO: Verifica todos
+        if (document.pointerLockElement === document.body && e.button === 0 && !isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen && !isShelterModalOpen) {
             interactionHandler.handlePrimaryAction();
         }
     });
@@ -353,16 +408,18 @@ function handleCraftItem(item) {
         logMessage(`Você já possui ${item.name}.`, 'warning');
         return;
     }
-    // NOVO: Verifica se o abrigo já foi construído antes de tentar criar novamente
     if (item.name === 'Abrigo' && player.hasShelter) {
         logMessage(`Você já construiu um ${item.name}.`, 'warning');
         return;
     }
 
     if (player.hasResources(item.cost)) {
-        if (item.effect(player, scene, camera, world, raycaster)) { // effect agora consome recursos internamente se for bem-sucedido
-            player.consumeResources(item.cost); // Consome recursos após o sucesso da criação
+        if (item.effect(player, scene, camera, world, raycaster)) {
+            player.consumeResources(item.cost);
             renderCraftingList(craftableItems, player, handleCraftItem);
+            if (currentUser.uid !== 'offline-player') {
+                savePlayerState(); // Salva após o craft
+            }
         }
         updateUI(player);
     } else {
@@ -370,20 +427,22 @@ function handleCraftItem(item) {
     }
 }
 
-// Função para lidar com interações do menu (comer/beber)
 function handlePlayerInteraction(actionType) {
+    let actionSuccessful = false;
     if (actionType === 'eat') {
-        player.eatCookedMeat(logMessage); // Agora a função no player gerencia a quantidade e logs
-    } else if (actionType === 'eat-fish') { // NOVO
-        player.eatCookedFish(logMessage);
+        actionSuccessful = player.eatCookedMeat(logMessage);
+    } else if (actionType === 'eat-fish') {
+        actionSuccessful = player.eatCookedFish(logMessage);
     } else if (actionType === 'drink') {
-        player.drinkCleanWater(logMessage);
+        actionSuccessful = player.drinkCleanWater(logMessage);
     }
-    renderInteractionList(player, handlePlayerInteraction); 
+    if (actionSuccessful && currentUser.uid !== 'offline-player') {
+        savePlayerState(); // Salva após interações de consumo
+    }
+    renderInteractionList(player, handlePlayerInteraction);
     updateUI(player);
 }
 
-// NOVO: Função para dormir no abrigo
 function handleSleepInShelter() {
     if (!player.hasShelter) {
         logMessage('Você precisa de um abrigo para dormir!', 'warning');
@@ -393,34 +452,35 @@ function handleSleepInShelter() {
         logMessage('Você só pode dormir à noite para pular o tempo.', 'warning');
         return;
     }
-    if (!checkProximityToShelterOrCampfire()) { // Certifica-se de que está perto do abrigo
+    if (!checkProximityToShelterOrCampfire()) {
         logMessage('Você precisa estar perto do seu abrigo para dormir.', 'warning');
         return;
     }
 
     logMessage('Você se recolheu para dormir no abrigo.', 'info');
     toggleShelterModal(false);
-    document.body.requestPointerLock(); // Volta para o controle do jogo
+    document.body.requestPointerLock();
 
-    // Avança o tempo para o próximo amanhecer
     const currentTimeInHours = dayTime;
-    const hoursUntilMorning = 24 - currentTimeInHours + 7; // Pula para 7 da manhã do próximo dia
+    const hoursUntilMorning = 24 - currentTimeInHours + 7;
     dayTime += hoursUntilMorning;
     if (dayTime >= 24) {
         dayTime -= 24;
     }
-    isNight = false; // Garante que não é mais noite
+    isNight = false;
     logMessage('Você acordou revigorado!', 'success');
-    player.health = Math.min(100, player.health + 10); // Recupera um pouco de vida ao dormir
-    player.hunger = Math.min(100, player.hunger + 10); // Mas a fome e sede podem aumentar um pouco
+    player.health = Math.min(100, player.health + 10);
+    player.hunger = Math.min(100, player.hunger + 10);
     player.thirst = Math.min(100, player.thirst + 10);
-    player.coldness = 0; // Zera o frio ao dormir no abrigo
+    player.coldness = 0;
+    if (currentUser.uid !== 'offline-player') {
+        savePlayerState(); // Salva após dormir
+    }
 }
 
-// Função para verificar proximidade ao abrigo ou fogueira
 function checkProximityToShelterOrCampfire() {
     const playerPosition = camera.position;
-    const proximityRadius = 5; // Raio de proximidade
+    const proximityRadius = 5;
 
     if (activeShelter) {
         const shelterPosition = activeShelter.mesh.position;
@@ -439,7 +499,6 @@ function checkProximityToShelterOrCampfire() {
     return false;
 }
 
-// Função para atualizar o ciclo dia/noite
 function updateDayNightCycle(deltaTime) {
     dayTime += deltaTime / TOTAL_CYCLE_SECONDS * 24;
     if (dayTime >= 24) {
@@ -455,7 +514,6 @@ function updateDayNightCycle(deltaTime) {
     const sunsetStart = 17;
     const sunsetEnd = 20;
 
-    // Amanhecer (transição da noite para o dia)
     if (dayTime >= sunriseStart && dayTime < sunriseEnd) {
         const t = (dayTime - sunriseStart) / (sunriseEnd - sunriseStart);
         ambientIntensity = THREE.MathUtils.lerp(0.1, 0.7, t);
@@ -464,13 +522,12 @@ function updateDayNightCycle(deltaTime) {
         directionalColor = new THREE.Color(0x202040).lerp(new THREE.Color(0xFFFFFF), t);
         skyColor = new THREE.Color(0x000033).lerp(new THREE.Color(0x87CEEB), t);
         fogColor = skyColor;
-        
+
         lightX = THREE.MathUtils.lerp(-100, 50, t);
         lightY = THREE.MathUtils.lerp(10, 100, t);
         lightZ = THREE.MathUtils.lerp(-50, 50, t);
-        isNight = false; // Não é noite
+        isNight = false;
     }
-    // Dia (luz plena)
     else if (dayTime >= sunriseEnd && dayTime < sunsetStart) {
         ambientIntensity = 0.7;
         directionalIntensity = 1.5;
@@ -483,9 +540,8 @@ function updateDayNightCycle(deltaTime) {
         lightX = THREE.MathUtils.lerp(50, -50, t);
         lightY = 100;
         lightZ = THREE.MathUtils.lerp(50, -50, t);
-        isNight = false; // Não é noite
+        isNight = false;
     }
-    // Entardecer (transição do dia para a noite)
     else if (dayTime >= sunsetStart && dayTime < sunsetEnd) {
         const t = (dayTime - sunsetStart) / (sunsetEnd - sunsetStart);
         ambientIntensity = THREE.MathUtils.lerp(0.7, 0.1, t);
@@ -498,9 +554,8 @@ function updateDayNightCycle(deltaTime) {
         lightX = THREE.MathUtils.lerp(-50, -100, t);
         lightY = THREE.MathUtils.lerp(100, 10, t);
         lightZ = THREE.MathUtils.lerp(-50, -50, t);
-        isNight = true; // É noite
+        isNight = true;
     }
-    // Noite (escuridão)
     else {
         ambientIntensity = 0.1;
         directionalIntensity = 0.05;
@@ -509,10 +564,10 @@ function updateDayNightCycle(deltaTime) {
         skyColor = new THREE.Color(0x000033);
         fogColor = skyColor;
 
-        lightX = 0; 
-        lightY = 50; 
+        lightX = 0;
+        lightY = 50;
         lightZ = 0;
-        isNight = true; // É noite
+        isNight = true;
     }
 
     ambientLight.intensity = ambientIntensity;
@@ -526,9 +581,8 @@ function updateDayNightCycle(deltaTime) {
     scene.fog.color.copy(fogColor);
 }
 
-// NOVO: Função para atualizar o clima
 function updateWeather() {
-    const chanceOfRain = 0.3; // 30% de chance de chuva a cada minuto
+    const chanceOfRain = 0.3;
     if (Math.random() < chanceOfRain) {
         isRaining = true;
         logMessage('Começou a chover!', 'info');
@@ -542,9 +596,8 @@ function updateWeather() {
     }
 }
 
-// NOVO: Efeito de chuva
 function startRainEffect() {
-    if (rainParticles) return; // Já está chovendo
+    if (rainParticles) return;
 
     const rainGeometry = new THREE.BufferGeometry();
     const positions = [];
@@ -552,7 +605,7 @@ function startRainEffect() {
 
     for (let i = 0; i < particleCount; i++) {
         const x = (Math.random() - 0.5) * ISLAND_SIZE * 2;
-        const y = Math.random() * 50 + 20; // Acima da câmera
+        const y = Math.random() * 50 + 20;
         const z = (Math.random() - 0.5) * ISLAND_SIZE * 2;
         positions.push(x, y, z);
     }
@@ -560,7 +613,7 @@ function startRainEffect() {
     rainGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
 
     const rainMaterial = new THREE.PointsMaterial({
-        color: 0xADD8E6, // Azul claro para a chuva
+        color: 0xADD8E6,
         size: 0.1,
         transparent: true,
         opacity: 0.7
@@ -570,7 +623,6 @@ function startRainEffect() {
     scene.add(rainParticles);
 }
 
-// NOVO: Parar efeito de chuva
 function stopRainEffect() {
     if (rainParticles) {
         scene.remove(rainParticles);
@@ -584,33 +636,28 @@ function animate() {
     requestAnimationFrame(animate);
     const deltaTime = clock.getDelta();
 
-    // NOVO: Só atualiza o jogo se nenhum modal estiver aberto
-    if (!isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen && !isShelterModalOpen) { 
+    if (!isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen && !isShelterModalOpen) {
         physics.update(camera, keys, deltaTime);
         animalsInstances.forEach(animal => animal.update(deltaTime, world, raycaster));
         if (activeCampfire) {
             activeCampfire.update(deltaTime);
         }
-        // NÃO TEM activeShelter.update(), pois o abrigo é estático.
-        
+
         updateDayNightCycle(deltaTime);
 
-        // NOVO: Atualiza a posição das partículas de chuva
         if (rainParticles) {
-            rainParticles.position.y -= 10 * deltaTime; // Velocidade da chuva
-            if (rainParticles.position.y < -20) { // Resetar partículas quando caem muito
+            rainParticles.position.y -= 10 * deltaTime;
+            if (rainParticles.position.y < -20) {
                 rainParticles.position.y = 50;
             }
         }
 
-        // Lógica para o destaque de interação
         raycaster.setFromCamera(new THREE.Vector2(), camera);
         const objectsToIntersect = [...world.trees.children, ...world.stones.children, ...world.animals.children];
         const activeCampfireMesh = activeCampfire ? activeCampfire.mesh : null;
         if (activeCampfireMesh) {
             objectsToIntersect.push(activeCampfireMesh);
         }
-        // NOVO: Adiciona o abrigo para interação
         const activeShelterMesh = activeShelter ? activeShelter.mesh : null;
         if (activeShelterMesh) {
             objectsToIntersect.push(activeShelterMesh);
@@ -620,13 +667,12 @@ function animate() {
 
         if (intersects.length > 0 && intersects[0].distance < interactionHandler.maxInteractionDistance) {
             let interactableObject = intersects[0].object;
-            // Percorre a hierarquia de parentes para encontrar o objeto principal (árvore, pedra, animal, fogueira, abrigo)
-            while (interactableObject.parent !== null && 
-                   interactableObject.parent !== world.trees && 
-                   interactableObject.parent !== world.stones && 
-                   interactableObject.parent !== world.animals && 
-                   interactableObject !== (activeCampfire ? activeCampfire.mesh : null) && // Verifica se é o mesh da fogueira
-                   interactableObject !== (activeShelter ? activeShelter.mesh : null) // NOVO: Verifica se é o mesh do abrigo
+            while (interactableObject.parent !== null &&
+                   interactableObject.parent !== world.trees &&
+                   interactableObject.parent !== world.stones &&
+                   interactableObject.parent !== world.animals &&
+                   interactableObject !== (activeCampfire ? activeCampfire.mesh : null) &&
+                   interactableObject !== (activeShelter ? activeShelter.mesh : null)
                    ) {
                 interactableObject = interactableObject.parent;
             }
@@ -646,10 +692,9 @@ function animate() {
                     highlightMesh.scale.set(1.5, 1.5, 1.5);
                     highlightMesh.position.y = activeCampfire.mesh.position.y + 0.75;
                 }
-                // NOVO: Ajusta o highlight para o abrigo
                 else if (activeShelter && interactableObject === activeShelter.mesh) {
-                    highlightMesh.scale.set(4, 3, 4); // Ajuste o tamanho do highlight para o abrigo
-                    highlightMesh.position.y = activeShelter.mesh.position.y + 1.5; // Centralize na altura do abrigo
+                    highlightMesh.scale.set(4, 3, 4);
+                    highlightMesh.position.y = activeShelter.mesh.position.y + 1.5;
                 }
                 else {
                     highlightMesh.scale.set(1.2, 1.2, 1.2);
@@ -659,11 +704,9 @@ function animate() {
             highlightMesh.visible = false;
             highlightedObject = null;
         }
-        
-        // Atualiza a posição da barra de progresso do cozimento
+
         interactionHandler.updateCookingProgressUI(camera, renderer);
 
-        // NOVO: Atualiza a interação com o abrigo
         if (activeShelter && highlightedObject === activeShelter.mesh && keys['KeyE']) {
             if (!isShelterModalOpen) {
                 isShelterModalOpen = true;
@@ -673,7 +716,7 @@ function animate() {
             }
         }
     }
-    
+
     updateUI(player);
     renderer.render(scene, camera);
 }
@@ -686,5 +729,5 @@ window.addEventListener('resize', () => {
     }
 });
 
-// --- INÍCIO ---
-initializeGame();
+// Registrar a função initializeGame com o módulo de autenticação
+setInitializeGameCallback(initializeGame);
