@@ -28,7 +28,7 @@ let activeCampfire = null;
 let activeShelter = null;
 
 let ambientLight, directionalLight;
-let dayTime = 0;
+let dayTime = 8;
 const TOTAL_CYCLE_SECONDS = 480;
 let isNight = false;
 let isRaining = false;
