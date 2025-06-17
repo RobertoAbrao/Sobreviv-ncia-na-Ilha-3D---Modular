@@ -24,7 +24,9 @@ const itemEmojis = {
     'Machado': '🪓',
     'Picareta': '⛏️',
     'Carne Crua': '🥩',
-    'Carne Cozida': '🍖'
+    'Carne Cozida': '🍖',
+    'Agua Suja': ' tainted💧', // NOVO: Emoji para água suja
+    'Agua Limpa': '💧' // NOVO: Emoji para água limpa
 };
 
 export function updateUI(player) {
@@ -51,6 +53,19 @@ export function updateUI(player) {
         const campfireEl = document.createElement('p');
         campfireEl.textContent = `${itemEmojis['Fogueira']} Fogueira (Construída)`;
         inventoryList.appendChild(campfireEl);
+    }
+
+    // Adiciona um botão "Beber Água Limpa" diretamente no inventário se tiver água
+    if (player.inventory['Agua Limpa'] > 0) {
+        const drinkWaterButton = document.createElement('button');
+        drinkWaterButton.textContent = `Beber Água Limpa (${player.inventory['Agua Limpa']})`;
+        drinkWaterButton.className = 'mt-2 p-2 bg-blue-600 hover:bg-blue-700 text-white rounded w-full';
+        drinkWaterButton.onclick = () => {
+            if (player.drinkCleanWater(logMessage)) {
+                updateUI(player); // Atualiza a UI após beber
+            }
+        };
+        inventoryList.appendChild(drinkWaterButton);
     }
 
     // Atualiza a Hotbar
@@ -120,26 +135,6 @@ export function renderCraftingList(craftableItems, player, onCraft) {
             itemEl.querySelector('button').addEventListener('click', () => onCraft(item));
         }
     }
-
-    // REMOVIDO: Botão "Comer Carne Cozida" do modal de crafting
-    /*
-    const eatMeatButton = document.createElement('button');
-    eatMeatButton.textContent = '🍴 Comer Carne Cozida';
-    eatMeatButton.className = 'crafting-item button bg-lime-600 hover:bg-lime-700 text-white p-3 rounded-lg w-full mt-4';
-    eatMeatButton.onclick = () => {
-        if (player.eatCookedMeat(logMessage)) {
-            updateUI(player);
-        }
-    };
-    if (player.inventory['Carne Cozida'] === 0) {
-        eatMeatButton.disabled = true;
-        eatMeatButton.classList.add('opacity-50', 'cursor-not-allowed');
-    } else {
-        eatMeatButton.disabled = false;
-        eatMeatButton.classList.remove('opacity-50', 'cursor-not-allowed');
-    }
-    craftingList.appendChild(eatMeatButton);
-    */
 }
 
 // Função para atualizar a hotbar visualmente
@@ -158,7 +153,6 @@ function updateHotbar(player) {
     } else {
         hotbarItemIcon2.textContent = '';
         hotbarItemIcon2.style.opacity = 0.5;
-    ;
     }
 
     hotbarSlot1.classList.remove('selected');

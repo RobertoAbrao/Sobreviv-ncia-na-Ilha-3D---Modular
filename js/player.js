@@ -7,8 +7,10 @@ export default class Player {
         this.inventory = { // Adicione carne crua e cozida aqui
             'Madeira': 0,
             'Pedra': 0,
-            'Carne Crua': 0, // NOVO
-            'Carne Cozida': 0 // NOVO
+            'Carne Crua': 0, 
+            'Carne Cozida': 0,
+            'Agua Suja': 0, // NOVO: Água Suja
+            'Agua Limpa': 0 // NOVO: Água Limpa
         }; 
         this.hasCampfire = false;
         this.hasAxe = false;
@@ -55,6 +57,20 @@ export default class Player {
             return true;
         } else {
             logMessageCallback('Você não tem carne cozida para comer.', 'warning');
+            return false;
+        }
+    }
+
+    // NOVO: Função para beber água limpa
+    drinkCleanWater(logMessageCallback) {
+        if (this.inventory['Agua Limpa'] > 0) {
+            this.inventory['Agua Limpa']--;
+            this.thirst = Math.max(0, this.thirst - 50); // Reduz a sede
+            this.health = Math.min(100, this.health + 2); // Regenera um pouco de vida
+            logMessageCallback('Você bebeu água limpa e refrescante!', 'success');
+            return true;
+        } else {
+            logMessageCallback('Você não tem água limpa para beber.', 'warning');
             return false;
         }
     }

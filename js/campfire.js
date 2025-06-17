@@ -48,12 +48,22 @@ export class Campfire {
     }
 }
 
-// NOVO: Itens que podem ser cozidos na fogueira
+// NOVO: Itens que podem ser cozidos/fervidos na fogueira
 export const cookableItems = [
     {
         name: 'Carne Crua',
         produces: 'Carne Cozida',
         amount: 1,
-        time: 3000 // Tempo em ms para cozinhar
+        time: 3000, // Tempo em ms para cozinhar
+        processText: 'Cozinhando',
+        processVerb: 'cozinhou'
+    },
+    {
+        name: 'Agua Suja', // NOVO
+        produces: 'Agua Limpa', // NOVO
+        amount: 1, // NOVO
+        time: 2000, // NOVO: Tempo em ms para ferver
+        processText: 'Fervendo', // NOVO
+        processVerb: 'ferveu' // NOVO
     }
 ];
