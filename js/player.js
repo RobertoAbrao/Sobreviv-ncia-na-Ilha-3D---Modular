@@ -16,12 +16,10 @@ export default class Player {
             'Agua Limpa': 0
         };
         this.hasCampfire = false;
-        this.campfireLocation = null; // NOVO: Propriedade para armazenar a localização da fogueira
+        this.campfireLocation = null; // Propriedade para armazenar a localização da fogueira
         this.hasShelter = false;
+        this.shelterLocation = null; // Adicionado: Propriedade para armazenar a localização do abrigo
         this.equippedTool = null;
-        // Adicionar quaisquer outras propriedades que você queira persistir
-        // Por exemplo, posição do jogador, mas isso seria mais complexo com 3D
-        // this.position = { x: 0, y: 0, z: 0 };
     }
 
     // Adiciona um item ao inventário
@@ -109,7 +107,7 @@ export default class Player {
         } else if (isRaining && !isNearShelterOrCampfire) {
             this.coldness = Math.min(100, this.coldness + 2);
             logMessageCallback('Você está sentindo o frio da chuva!', 'warning');
-        } else if (isNearDryShelterOrCampfire) { // Verifica se está em abrigo seco ou perto da fogueira
+        } else if (isNearShelterOrCampfire) { // Verifica se está em abrigo seco ou perto da fogueira
             this.coldness = Math.max(0, this.coldness - 5);
         } else {
             this.coldness = Math.max(0, this.coldness - 1);
@@ -133,16 +131,15 @@ export default class Player {
             hunger: this.hunger,
             thirst: this.thirst,
             coldness: this.coldness,
-            inventory: { ...this.inventory }, // Copia o inventário
+            inventory: { ...this.inventory },
             hasCampfire: this.hasCampfire,
-            campfireLocation: this.campfireLocation, // NOVO: Salva a localização da fogueira
+            campfireLocation: this.campfireLocation,
             hasShelter: this.hasShelter,
+            shelterLocation: this.shelterLocation, // Salvando a localização da barraca
             equippedTool: this.equippedTool,
-            // position: { x: this.position.x, y: this.position.y, z: this.position.z }
         };
     }
 
-    // Método para carregar o estado do jogador
     loadState(state) {
         this.health = state.health !== undefined ? state.health : 100;
         this.hunger = state.hunger !== undefined ? state.hunger : 0;
@@ -153,13 +150,10 @@ export default class Player {
             'Peixe Cru': 0, 'Peixe Cozido': 0, 'Agua Suja': 0, 'Agua Limpa': 0
         };
         this.hasCampfire = state.hasCampfire !== undefined ? state.hasCampfire : false;
-        this.campfireLocation = state.campfireLocation || null; // NOVO: Carrega a localização da fogueira
+        this.campfireLocation = state.campfireLocation || null;
         this.hasShelter = state.hasShelter !== undefined ? state.hasShelter : false;
+        this.shelterLocation = state.shelterLocation || null; // Carregando a localização da barraca
         this.equippedTool = state.equippedTool !== undefined ? state.equippedTool : null;
-        // if (state.position) {
-        //     this.position.x = state.position.x;
-        //     this.position.y = state.position.y;
-        //     this.position.z = state.position.z;
-        // }
     }
+
 }

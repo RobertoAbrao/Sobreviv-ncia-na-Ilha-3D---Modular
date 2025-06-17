@@ -114,6 +114,8 @@ const craftableItems = [
             scene.add(newShelter.mesh);
             activeShelter = newShelter;
             player.hasShelter = true;
+            // Adicionado: Salvar a localização da barraca
+            player.shelterLocation = { x: position.x, y: position.y, z: position.z }; // Salva a posição
             logMessage('Você construiu um abrigo! Um lugar para se proteger.', 'success');
             return true;
         },
@@ -208,6 +210,20 @@ export async function initializeGame(user) {
         activeCampfire = loadedCampfire;
         logMessage('Fogueira carregada do progresso salvo!', 'info');
     }
+
+    // Adicionado: Recria a barraca se existir no estado salvo
+    if (player.hasShelter && player.shelterLocation) {
+        const shelterPos = new THREE.Vector3(
+            player.shelterLocation.x,
+            player.shelterLocation.y,
+            player.shelterLocation.z
+        );
+        const loadedShelter = new Shelter(shelterPos);
+        scene.add(loadedShelter.mesh);
+        activeShelter = loadedShelter;
+        logMessage('Abrigo carregado do progresso salvo!', 'info');
+    }
+
     // FIM DA LÓGICA DO MUNDO
     
     const startX = 0, startZ = 0;
