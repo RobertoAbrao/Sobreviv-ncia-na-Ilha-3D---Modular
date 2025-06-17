@@ -11,7 +11,6 @@ import { Shelter, shelterCost } from './js/shelter.js';
 import { updateUI, logMessage, toggleCraftingModal, renderCraftingList, selectTool, toggleInteractionModal, renderInteractionList, toggleCampfireModal, toggleShelterModal, renderShelterOptions } from './js/ui.js';
 import { setInitializeGameCallback } from './js/auth.js';
 
-// Importa Firestore (para salvar/carregar dados do jogador)
 import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 // --- Variáveis Globais da Cena ---
@@ -25,10 +24,9 @@ let isCampfireModalOpen = false;
 let isShelterModalOpen = false;
 let highlightMesh = null;
 let highlightedObject = null;
-let activeCampfire = null; // Definir para evitar erro de referência
-let activeShelter = null; // Definir para evitar erro de referência
+let activeCampfire = null;
+let activeShelter = null;
 
-// Variáveis para o ciclo dia/noite e clima
 let ambientLight, directionalLight;
 let dayTime = 0;
 const TOTAL_CYCLE_SECONDS = 480;
@@ -36,11 +34,9 @@ let isNight = false;
 let isRaining = false;
 let rainParticles = null;
 
-// Variável global para armazenar o objeto de usuário logado
 let currentUser = null;
-let db; // Variável para o Firestore
+let db;
 
-// Definição dos itens de crafting
 const craftableItems = [
     {
         name: 'Fogueira',
@@ -52,19 +48,17 @@ const craftableItems = [
             }
 
             const position = camera.position.clone();
-            // A altura da fogueira deve ser ligeiramente acima do terreno para não ficar "enterrada"
             const groundY = world.getTerrainHeight(position.x, position.z, raycaster);
             if (groundY < WATER_LEVEL) {
                 logMessage('Não é possível construir na água!', 'danger');
                 return false;
             }
-            position.y = groundY + 0.1; // Adiciona um pequeno offset para a fogueira não afundar
+            position.y = groundY + 0.1;
 
             const newCampfire = new Campfire(position);
             scene.add(newCampfire.mesh);
             activeCampfire = newCampfire;
             player.hasCampfire = true;
-            // SALVA A POSIÇÃO DA FOGUEIRA NO OBJETO PLAYER PARA PERSISTÊNCIA
             player.campfireLocation = { x: position.x, y: position.y, z: position.z };
             logMessage('Você construiu uma fogueira!', 'success');
             return true;
@@ -114,7 +108,7 @@ const craftableItems = [
                 logMessage('Não é possível construir o abrigo tão perto da água!', 'danger');
                 return false;
             }
-            position.y = groundY; // Coloca o abrigo no chão
+            position.y = groundY;
 
             const newShelter = new Shelter(position);
             scene.add(newShelter.mesh);
@@ -127,14 +121,12 @@ const craftableItems = [
     }
 ];
 
-// Função que inicia o jogo (chamada após login ou jogar offline)
-export function initializeGame(user) {
+export async function initializeGame(user) {
     currentUser = user;
     db = getFirestore();
 
     console.log("Iniciando jogo para o usuário:", currentUser.email || "Offline");
 
-    // --- Configuração Básica ---
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87ceeb);
     scene.fog = new THREE.Fog(0x87ceeb, 40, ISLAND_SIZE);
@@ -155,7 +147,6 @@ export function initializeGame(user) {
     highlightMesh.visible = false;
     scene.add(highlightMesh);
 
-    // --- Iluminação ---
     ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
 
@@ -165,55 +156,69 @@ export function initializeGame(user) {
     directionalLight.shadow.mapSize.set(2048, 2048);
     scene.add(directionalLight);
 
-    world = new World(scene);
-    world.generate();
+    player = new Player();
 
+    // --- LÓGICA DE CARREGAMENTO/CRIAÇÃO DO MUNDO ---
+    if (user.uid !== 'offline-player') {
+        const playerDocRef = doc(db, "players", user.uid);
+        const docSnap = await getDoc(playerDocRef);
+
+        let worldSeed;
+        if (docSnap.exists() && docSnap.data().worldSeed) {
+            // Jogador existente, carrega a semente do mundo
+            worldSeed = docSnap.data().worldSeed;
+            logMessage(`Semente do mundo carregada para ${user.email}!`, 'success');
+            
+            // Carrega o estado do jogador
+            if (docSnap.data().playerState) {
+                player.loadState(docSnap.data().playerState);
+                logMessage(`Progresso do jogador carregado!`, 'success');
+            }
+        } else {
+            // Novo jogador, cria e salva uma nova semente
+            worldSeed = Math.random();
+            logMessage(`Nova semente de mundo gerada para ${user.email}.`, 'info');
+            try {
+                await setDoc(playerDocRef, { worldSeed: worldSeed, playerState: player.saveState() }, { merge: true });
+                logMessage('Seu novo mundo foi salvo na nuvem!', 'success');
+            } catch (error) {
+                console.error("Erro ao salvar nova semente:", error);
+                logMessage('Não foi possível salvar seu novo mundo.', 'danger');
+            }
+        }
+        world = new World(scene, worldSeed);
+
+    } else {
+        // Modo offline, cria um mundo aleatório que não será salvo
+        world = new World(scene, Math.random());
+        logMessage("Jogando offline. Progresso não será salvo.", 'info');
+    }
+    
+    world.generate();
+    
+    // Recria a fogueira se existir no estado salvo
+    if (player.hasCampfire && player.campfireLocation) {
+        const campfirePos = new THREE.Vector3(
+            player.campfireLocation.x,
+            player.campfireLocation.y,
+            player.campfireLocation.z
+        );
+        const loadedCampfire = new Campfire(campfirePos);
+        scene.add(loadedCampfire.mesh);
+        activeCampfire = loadedCampfire;
+        logMessage('Fogueira carregada do progresso salvo!', 'info');
+    }
+    // FIM DA LÓGICA DO MUNDO
+    
     const startX = 0, startZ = 0;
     const startY = world.getTerrainHeight(startX, startZ, raycaster) + PLAYER_HEIGHT;
     camera.position.set(startX, startY, startZ);
 
-    player = new Player();
     physics = new Physics(world, raycaster);
     interactionHandler = new InteractionHandler(camera, world, player, raycaster, () => activeCampfire, () => activeShelter);
 
-    // Carregar estado do jogador do Firestore
-    if (user.uid !== 'offline-player') {
-        const playerDocRef = doc(db, "players", user.uid);
-        getDoc(playerDocRef).then(docSnap => {
-            if (docSnap.exists() && docSnap.data().playerState) {
-                player.loadState(docSnap.data().playerState);
-                logMessage(`Progresso de ${user.email} carregado!`, 'success');
+    updateUI(player); // Atualiza a UI com os dados carregados ou iniciais
 
-                // LÓGICA CRUCIAL: RECRIAR A FOGUEIRA SE ESTIVER SALVA
-                if (player.hasCampfire && player.campfireLocation) {
-                    const campfirePos = new THREE.Vector3(
-                        player.campfireLocation.x,
-                        player.campfireLocation.y,
-                        player.campfireLocation.z
-                    );
-                    const loadedCampfire = new Campfire(campfirePos);
-                    scene.add(loadedCampfire.mesh);
-                    activeCampfire = loadedCampfire; // Atribui a fogueira carregada à variável global
-                    logMessage('Fogueira carregada do progresso salvo!', 'info');
-                }
-
-            } else {
-                logMessage(`Nenhum progresso salvo para ${user.email}. Iniciando novo jogo.`, 'info');
-                // Salvar o estado inicial do jogador no Firestore
-                savePlayerState();
-            }
-            updateUI(player); // Atualizar a UI após carregar/definir o estado
-        }).catch(error => {
-            console.error("Erro ao carregar dados do jogador:", error);
-            logMessage("Erro ao carregar seu progresso.", 'danger');
-        });
-    } else {
-        // Modo offline, não tenta carregar do Firestore
-        logMessage("Jogando offline. Progresso não será salvo.", 'info');
-        updateUI(player);
-    }
-
-    // --- Adicionar Animais ---
     for(let i = 0; i < world.initialAnimalCount; i++) {
         const aX = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
         const aZ = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
@@ -224,12 +229,10 @@ export function initializeGame(user) {
         }
     }
 
-    // --- Iniciar Controles e Loops ---
     initializeControls();
     setInterval(() => {
         const isNearShelterOrCampfire = checkProximityToShelterOrCampfire();
         player.gameTick(logMessage, isNight, isRaining, isNearShelterOrCampfire);
-        // Salva estado do jogador periodicamente
         if (currentUser.uid !== 'offline-player') {
              savePlayerState();
         }
@@ -247,17 +250,20 @@ export function initializeGame(user) {
     animate();
 }
 
-// Função para salvar o estado do jogador no Firestore
 async function savePlayerState() {
-    if (!currentUser || currentUser.uid === 'offline-player') return;
+    if (!currentUser || currentUser.uid === 'offline-player' || !world) return;
 
     const playerState = player.saveState();
+    // MODIFICADO: Agora também salva a semente do mundo junto com o estado do jogador.
+    const fullState = {
+        playerState: playerState,
+        worldSeed: world.seed 
+    };
+
     try {
-        await setDoc(doc(db, "players", currentUser.uid), { playerState }, { merge: true });
-        // logMessage('Progresso salvo automaticamente!', 'info'); // Opcional, pode ser muito spam
+        await setDoc(doc(db, "players", currentUser.uid), fullState, { merge: true });
     } catch (error) {
         console.error("Erro ao salvar progresso:", error);
-        // logMessage('Erro ao salvar progresso.', 'danger');
     }
 }
 
@@ -418,7 +424,7 @@ function handleCraftItem(item) {
             player.consumeResources(item.cost);
             renderCraftingList(craftableItems, player, handleCraftItem);
             if (currentUser.uid !== 'offline-player') {
-                savePlayerState(); // Salva após o craft
+                savePlayerState();
             }
         }
         updateUI(player);
@@ -437,7 +443,7 @@ function handlePlayerInteraction(actionType) {
         actionSuccessful = player.drinkCleanWater(logMessage);
     }
     if (actionSuccessful && currentUser.uid !== 'offline-player') {
-        savePlayerState(); // Salva após interações de consumo
+        savePlayerState();
     }
     renderInteractionList(player, handlePlayerInteraction);
     updateUI(player);
@@ -474,7 +480,7 @@ function handleSleepInShelter() {
     player.thirst = Math.min(100, player.thirst + 10);
     player.coldness = 0;
     if (currentUser.uid !== 'offline-player') {
-        savePlayerState(); // Salva após dormir
+        savePlayerState();
     }
 }
 
@@ -729,5 +735,4 @@ window.addEventListener('resize', () => {
     }
 });
 
-// Registrar a função initializeGame com o módulo de autenticação
 setInitializeGameCallback(initializeGame);

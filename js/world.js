@@ -2,26 +2,40 @@
 import * as THREE from 'three';
 import { createNoise2D } from 'simplex-noise';
 import { ISLAND_SIZE, WATER_LEVEL } from './constants.js';
-import Animal from './animal.js'; // NOVO: Importa a classe Animal
+import Animal from './animal.js';
+
+// NOVA FUNÇÃO: Cria um gerador de números pseudo-aleatórios a partir de uma semente.
+// Isso garante que, para a mesma semente, a sequência de números aleatórios seja sempre a mesma.
+function createSeededRandom(seed) {
+    let s = seed;
+    return function() {
+        s = Math.sin(s) * 10000;
+        return s - Math.floor(s);
+    };
+}
 
 export default class World {
-    constructor(scene) {
+    constructor(scene, seed) {
         this.scene = scene;
+        this.seed = seed; 
         this.terrainMesh = null;
         this.waterMesh = null;
         this.trees = new THREE.Group();
         this.stones = new THREE.Group();
-        this.animals = new THREE.Group(); // Grupo para os animais
+        this.animals = new THREE.Group();
         this.initialTreeCount = 80;
         this.initialStoneCount = 50;
         this.initialAnimalCount = 15;
-        this.noise2D = createNoise2D(Math.random);
+        
+        // MODIFICADO: Usamos nossa nova função para criar um gerador de aleatoriedade
+        // baseado na semente, que é o que createNoise2D espera.
+        const seededRandom = createSeededRandom(this.seed);
+        this.noise2D = createNoise2D(seededRandom); 
     }
 
     generate() {
-        console.log("Gerando terreno suave...");
+        console.log(`Gerando terreno suave com a semente: ${this.seed}`);
         
-        // ... (código de geração do terreno, sem alterações) ...
         const terrainGeo = new THREE.PlaneGeometry(ISLAND_SIZE, ISLAND_SIZE, 200, 200);
         terrainGeo.rotateX(-Math.PI / 2);
 
@@ -75,7 +89,7 @@ export default class World {
         this.placeInitialStones();
         this.scene.add(this.trees);
         this.scene.add(this.stones);
-        this.scene.add(this.animals); // Adiciona o grupo de animais à cena
+        this.scene.add(this.animals);
     }
 
     placeInitialTrees() {
@@ -146,12 +160,10 @@ export default class World {
         this.stones.add(stoneMesh);
     }
 
-    // NOVO: Método para criar um animal e adicioná-lo ao grupo
     createAnimal(position, color) {
-        // Assume que Animal é uma classe que cria um mesh e tem um método update
-        const animal = new Animal(this.scene, position, color); // Reusa a lógica de Animal para criar o mesh
-        this.animals.add(animal.mesh); // Adiciona o mesh do animal ao grupo
-        return animal; // Retorna a instância completa do Animal
+        const animal = new Animal(this.scene, position, color);
+        this.animals.add(animal.mesh);
+        return animal;
     }
     
     getTerrainHeight(x, z, raycaster) {
@@ -168,7 +180,6 @@ export default class World {
         this.stones.remove(stoneObject);
     }
 
-    // NOVO: Método para remover um animal
     removeAnimal(animalMesh) {
         this.animals.remove(animalMesh);
     }
@@ -191,20 +202,14 @@ export default class World {
         }
     }
 
-    // NOVO: Método para regenerar animais
     respawnAnimalIfNeeded() {
         if (this.animals.children.length < this.initialAnimalCount) {
             const x = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
             const z = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
             const y = this.getTerrainHeight(x, z, new THREE.Raycaster());
             if(y > WATER_LEVEL) {
-               // IMPORTANTE: createAnimal retorna a instância da classe Animal, não apenas o mesh.
-               // Precisamos armazenar a instância para chamar .update() no loop animate.
                const newAnimalInstance = new Animal(this.scene, new THREE.Vector3(x, y + 0.4, z), Math.random() * 0xffffff);
-               this.animals.add(newAnimalInstance.mesh); // Adiciona o mesh ao grupo
-               // Aqui você precisaria de um mecanismo para adicionar essa nova instância a `animalsInstances` em `main.js`
-               // Por simplicidade neste exemplo, vamos apenas adicionar o mesh e aceitar que o `update` da instância não será chamado.
-               // Em um jogo mais complexo, você teria um array global de instâncias de animais.
+               this.animals.add(newAnimalInstance.mesh);
                console.log("Animal renasceu com sucesso!");
             }
         }
