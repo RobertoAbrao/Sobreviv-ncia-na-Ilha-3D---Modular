@@ -25,7 +25,7 @@ export default class Animal {
         mtlLoader.setPath(basePath);
 
         // Carrega o arquivo MTL primeiro para aplicar os materiais ao OBJ
-        mtlLoader.load(mtlFileName, (materials) => { // AGORA USA APENAS O NOME DO ARQUIVO
+        mtlLoader.load(mtlFileName, (materials) => {
             materials.preload();
             objLoader.setMaterials(materials);
 
@@ -33,10 +33,13 @@ export default class Animal {
             objLoader.setPath(basePath);
 
             // Agora carrega o arquivo OBJ
-            objLoader.load(objFileName, (object) => { // AGORA USA APENAS O NOME DO ARQUIVO
+            objLoader.load(objFileName, (object) => {
                 this.model = object;
-                this.model.scale.set(scale, scale, scale); // Ajusta a escala do modelo
-                this.model.rotation.y = rotationY; // Ajusta a rotação inicial se necessário
+                this.model.scale.set(scale, scale, scale);
+                
+                // AJUSTE PARA VIRAR A TARTARUGA (experimente estes valores)
+                this.model.rotation.x = Math.PI / 2; // Gira 90 graus no eixo X (comum para modelos com Z-up)
+                this.model.rotation.y = rotationY; // Rotação horizontal
 
                 // Ativa sombras para o modelo
                 this.model.traverse((child) => {
@@ -46,15 +49,14 @@ export default class Animal {
                     }
                 });
 
-                this.mesh.add(this.model); // Adiciona o modelo ao grupo do Animal
-                this.mesh.position.copy(position); // Define a posição do grupo
+                this.mesh.add(this.model);
+                this.mesh.position.copy(position);
             },
             undefined, // Função de progresso opcional
             (error) => {
                 console.error('Erro ao carregar o modelo 3D do animal (OBJ):', error);
-                // Em caso de erro, pode ser útil fallback para uma esfera ou logar
                 const geometry = new THREE.SphereGeometry(0.4, 16, 8);
-                const material = new THREE.MeshStandardMaterial({ color: 0xff0000 }); // Cor de erro
+                const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
                 this.mesh.add(new THREE.Mesh(geometry, material));
                 this.mesh.position.copy(position);
             });
@@ -62,17 +64,18 @@ export default class Animal {
         undefined, // Função de progresso opcional
         (error) => {
             console.error('Erro ao carregar o arquivo MTL do animal:', error);
-            // Em caso de erro no MTL, tenta carregar apenas o OBJ sem materiais externos
-            objLoader.setPath(basePath); // Ainda define o path para o OBJLoader
-            objLoader.load(objFileName, (object) => { // AGORA USA APENAS O NOME DO ARQUIVO
+            objLoader.setPath(basePath);
+            objLoader.load(objFileName, (object) => {
                 this.model = object;
                 this.model.scale.set(scale, scale, scale);
+                // AJUSTE PARA VIRAR A TARTARUGA (também aqui no fallback)
+                this.model.rotation.x = Math.PI / 2; // Gira 90 graus no eixo X
                 this.model.rotation.y = rotationY;
                 this.model.traverse((child) => {
                     if (child.isMesh) {
                         child.castShadow = true;
                         child.receiveShadow = true;
-                        child.material = new THREE.MeshStandardMaterial({ color: 0x808080 }); // Material padrão cinza
+                        child.material = new THREE.MeshStandardMaterial({ color: 0x808080 });
                     }
                 });
                 this.mesh.add(this.model);
@@ -87,8 +90,9 @@ export default class Animal {
         });
     }
 
-    update(deltaTime, world, raycaster) {
-        if (!this.model) return; // Garante que o modelo foi carregado antes de tentar atualizá-lo
+    // MODIFICADO: update agora espera um Raycaster existente
+    update(deltaTime, world, raycaster) { 
+        if (!this.model) return;
 
         this.changeDirectionCooldown -= deltaTime;
         if (this.changeDirectionCooldown <= 0) {
@@ -103,15 +107,19 @@ export default class Animal {
         const moveStep = this.velocity.clone().multiplyScalar(deltaTime);
         const nextPos = this.mesh.position.clone().add(moveStep);
         
-        const groundY = world.getTerrainHeight(nextPos.x, nextPos.z, raycaster);
+        // Passando o raycaster recebido para world.getTerrainHeight
+        const groundY = world.getTerrainHeight(nextPos.x, nextPos.z, raycaster); 
         
         if (groundY > WATER_LEVEL) {
             this.mesh.position.add(moveStep);
-            this.mesh.position.y = groundY + 0.4; // Ajuste a altura do modelo em relação ao chão
-            // Faça o modelo "olhar" na direção do movimento
-            this.model.rotation.y = -this.wanderAngle + Math.PI / 2; // Ajuste para a frente do seu modelo
+            this.mesh.position.y = groundY + 0.4;
+            // A rotação horizontal do modelo é relativa à sua orientação inicial
+            // Se você ajustou this.model.rotation.x = Math.PI / 2; no construtor,
+            // esta linha precisará compensar isso para que o "frente" do seu modelo
+            // aponte para a direção do movimento quando o ângulo mudar.
+            this.model.rotation.y = -this.wanderAngle + Math.PI / 2;
         } else {
-            this.wanderAngle += Math.PI; // Inverte a direção se estiver em água
+            this.wanderAngle += Math.PI;
         }
     }
 }

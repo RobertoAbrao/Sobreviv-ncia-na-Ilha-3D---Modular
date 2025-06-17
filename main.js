@@ -675,7 +675,8 @@ function animate() {
 
     if (!isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen && !isShelterModalOpen) {
         physics.update(camera, keys, deltaTime);
-        animalsInstances.forEach(animal => animal.update(deltaTime, world, raycaster));
+        // MODIFICADO: Passando a instância global de raycaster para animal.update
+        animalsInstances.forEach(animal => animal.update(deltaTime, world, raycaster)); 
         if (activeCampfire) {
             activeCampfire.update(deltaTime);
         }
@@ -689,6 +690,7 @@ function animate() {
             }
         }
 
+        // Esta parte do raycaster.setFromCamera já usa o raycaster global.
         raycaster.setFromCamera(new THREE.Vector2(), camera);
         const objectsToIntersect = [...world.trees.children, ...world.stones.children, ...world.animals.children];
         const activeCampfireMesh = activeCampfire ? activeCampfire.mesh : null;

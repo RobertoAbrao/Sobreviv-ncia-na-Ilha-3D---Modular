@@ -4,6 +4,8 @@ import { createNoise2D } from 'simplex-noise';
 import { ISLAND_SIZE, WATER_LEVEL } from './constants.js';
 import Animal from './animal.js';
 
+// NOVA FUNÇÃO: Cria um gerador de números pseudo-aleatórios a partir de uma semente.
+// Isso garante que, para a mesma semente, a sequência de números aleatórios seja sempre a mesma.
 function createSeededRandom(seed) {
     let s = seed;
     return function() {
@@ -25,6 +27,8 @@ export default class World {
         this.initialStoneCount = 50;
         this.initialAnimalCount = 15;
         
+        // MODIFICADO: Usamos nossa nova função para criar um gerador de aleatoriedade
+        // baseado na semente, que é o que createNoise2D espera.
         const seededRandom = createSeededRandom(this.seed);
         this.noise2D = createNoise2D(seededRandom); 
     }
@@ -103,7 +107,7 @@ export default class World {
     createTreeAtRandomLocation() {
         const x = (Math.random() - 0.5) * ISLAND_SIZE * 0.8;
         const z = (Math.random() - 0.5) * ISLAND_SIZE * 0.8;
-        const height = this.getTerrainHeight(x, z, new THREE.Raycaster());
+        const height = this.getTerrainHeight(x, z, new THREE.Raycaster()); // Usando um Raycaster temporário aqui
 
         if (height > WATER_LEVEL + 2 && height < 12) {
             this.createTree(x, height, z);
@@ -115,7 +119,7 @@ export default class World {
     createStoneAtRandomLocation() {
         const x = (Math.random() - 0.5) * ISLAND_SIZE * 0.8;
         const z = (Math.random() - 0.5) * ISLAND_SIZE * 0.8;
-        const height = this.getTerrainHeight(x, z, new THREE.Raycaster());
+        const height = this.getTerrainHeight(x, z, new THREE.Raycaster()); // Usando um Raycaster temporário aqui
 
         if (height > 11) {
             this.createStone(x, height, z);
@@ -162,7 +166,8 @@ export default class World {
         return animal;
     }
     
-    getTerrainHeight(x, z, raycaster) {
+    // MODIFICADO: getTerrainHeight agora espera um Raycaster existente
+    getTerrainHeight(x, z, raycaster) { // Removido o default parameter new THREE.Raycaster()
         raycaster.set(new THREE.Vector3(x, 50, z), new THREE.Vector3(0, -1, 0));
         const intersects = raycaster.intersectObject(this.terrainMesh);
         return intersects.length > 0 ? intersects[0].point.y : 0;
@@ -202,7 +207,7 @@ export default class World {
         if (this.animals.children.length < this.initialAnimalCount) {
             const x = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
             const z = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
-            const y = this.getTerrainHeight(x, z, new THREE.Raycaster());
+            const y = this.getTerrainHeight(x, z, new THREE.Raycaster()); // Usando um Raycaster temporário aqui
             if(y > WATER_LEVEL) {
                const newAnimalInstance = new Animal(this.scene, new THREE.Vector3(x, y + 0.4, z), 'models/tartaruga/tartaruga.obj', 'models/tartaruga/tartaruga.mtl', 0.05, Math.random() * Math.PI * 2);
                this.animals.add(newAnimalInstance.mesh);
