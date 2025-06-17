@@ -2,9 +2,9 @@
 import * as THREE from 'three';
 import { logMessage } from './ui.js';
 import { cookableItems } from './campfire.js'; 
-import { WATER_LEVEL } from './constants.js'; // Importar WATER_LEVEL
+import { WATER_LEVEL } from './constants.js'; // Importe WATER_LEVEL
 
-// Referências aos elementos da UI
+// NOVO: Referências aos elementos da UI
 const cookingProgressContainer = document.getElementById('cooking-progress-container');
 const cookingProgressBar = document.getElementById('cooking-progress-bar');
 const cookingProgressText = document.getElementById('cooking-progress-text');
@@ -23,7 +23,7 @@ export default class InteractionHandler {
     handlePrimaryAction() {
         this.raycaster.setFromCamera(new THREE.Vector2(), this.camera); 
 
-        const objectsToIntersect = [...this.world.trees.children, ...this.world.stones.children, ...this.world.animals.children, this.world.waterMesh];
+        const objectsToIntersect = [...this.world.trees.children, ...this.world.stones.children, ...this.world.animals.children];
         const activeCampfireMesh = this.getActiveCampfire() ? this.getActiveCampfire().mesh : null;
 
         if (activeCampfireMesh) {
@@ -31,6 +31,27 @@ export default class InteractionHandler {
         }
 
         const intersects = this.raycaster.intersectObjects(objectsToIntersect, true);
+
+        // NOVO: Coleta de água fora do loop de intersects para ser mais confiável
+        const waterMeshPosition = this.world.waterMesh.position;
+        const playerPosition = this.camera.position;
+
+        // Calcula a distância horizontal até o centro do mesh de água
+        const distToWaterPlane = new THREE.Vector2(playerPosition.x, playerPosition.z).distanceTo(new THREE.Vector2(waterMeshPosition.x, waterMeshPosition.z));
+
+        // Verifica se o jogador está na área da água (considerando o tamanho do plano)
+        const isInWaterArea = distToWaterPlane < this.world.waterMesh.geometry.parameters.width / 2;
+
+        // Verifica se o jogador está dentro de uma altura razoável para coletar água
+        const isAtWaterLevel = playerPosition.y < WATER_LEVEL + 1.0; // Permite coletar se estiver na água ou um pouco acima dela
+
+        if (isInWaterArea && isAtWaterLevel) {
+            // Se o jogador estiver na área da água e em um nível adequado, permitir a coleta
+            // Você pode adicionar um pequeno cooldown para evitar coleta excessiva
+            this.collectWater();
+            return; // Retorna para não processar outras interações imediatamente
+        }
+
 
         if (intersects.length > 0) {
             const intersect = intersects[0];
@@ -42,8 +63,7 @@ export default class InteractionHandler {
                        clickedObject.parent !== this.world.trees && 
                        clickedObject.parent !== this.world.stones && 
                        clickedObject.parent !== this.world.animals &&
-                       clickedObject !== activeCampfireMesh &&
-                       clickedObject !== this.world.waterMesh 
+                       clickedObject !== activeCampfireMesh
                        ) {
                     clickedObject = clickedObject.parent;
                 }
@@ -68,14 +88,10 @@ export default class InteractionHandler {
                     const meatAmount = 1 + Math.floor(Math.random() * 2);
                     this.world.removeAnimal(clickedObject);
                     this.player.addToInventory('Carne Crua', meatAmount);
-                    logMessage(`Você caçou um animal e obteve ${meatAmount}x Carne Crua!`, 'success');
+                    logMessage(`Você caçou um animal e obtejo ${meatAmount}x Carne Crua!`, 'success');
                 }
                 else if (activeCampfireMesh && clickedObject === activeCampfireMesh) {
                     this.interactWithCampfire();
-                }
-                // Lógica para coletar água: verifique se o objeto clicado é a água E se a câmera está no nível correto
-                else if (clickedObject === this.world.waterMesh) {
-                    this.collectWater(intersect.point); // Passe o ponto de interseção para a função
                 }
             }
         }
@@ -147,21 +163,11 @@ export default class InteractionHandler {
         }
     }
 
-    // NOVA LÓGICA: Coletar água baseada no ponto de interseção
-    collectWater(intersectionPoint) {
-        // Verifica se o ponto de interseção (onde o raio atingiu a água) está próximo o suficiente da câmera
-        // E se a câmera está em uma altura razoável para coletar (não muito acima, nem muito abaixo)
-        const distanceToWaterSurface = this.camera.position.distanceTo(intersectionPoint);
-        
-        // Ajuste a tolerância conforme necessário.
-        // Se a distância for pequena e a câmera estiver acima da água mas não muito alta
-        if (distanceToWaterSurface < 3.0 && this.camera.position.y > WATER_LEVEL - 1.0 && this.camera.position.y < WATER_LEVEL + 2.0) {
-             this.player.addToInventory('Agua Suja', 1);
-             logMessage('Você coletou um pouco de água suja. É melhor ferver antes de beber!', 'info');
-             this.player.thirst = Math.min(100, this.player.thirst + 5); 
-        } else {
-            logMessage('Você precisa estar mais perto ou em uma posição melhor para coletar água.', 'warning');
-        }
+    collectWater() {
+        // A checagem de proximidade horizontal e vertical foi movida para handlePrimaryAction
+        this.player.addToInventory('Agua Suja', 1);
+        logMessage('Você coletou um pouco de água suja. É melhor ferver antes de beber!', 'info');
+        this.player.thirst = Math.min(100, this.player.thirst + 5); 
     }
 
     finishCooking() {
