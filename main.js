@@ -1,3 +1,4 @@
+// js/main.js
 import * as THREE from 'three';
 import { TICK_RATE, PLAYER_HEIGHT, ISLAND_SIZE, WATER_LEVEL } from './js/constants.js';
 import World from './js/world.js';
@@ -6,7 +7,7 @@ import Physics from './js/physics.js';
 import Animal from './js/animal.js';
 import InteractionHandler from './js/interaction.js';
 import { Campfire, campfireCost } from './js/campfire.js';
-import { updateUI, logMessage, toggleCraftingModal, renderCraftingList, selectTool } from './js/ui.js'; // NOVO: Importa selectTool
+import { updateUI, logMessage, toggleCraftingModal, renderCraftingList, selectTool } from './js/ui.js';
 
 // --- Variáveis Globais da Cena ---
 let scene, camera, renderer, clock, raycaster;
@@ -18,7 +19,15 @@ let activeCampfire = null;
 let highlightMesh = null;
 let highlightedObject = null;
 
-// NOVO: Definição dos itens de crafting
+// NOVO: Variáveis para o ciclo dia/noite
+let ambientLight, directionalLight;
+let dayTime = 0; // 0 a 24 para representar as horas do dia
+const TOTAL_CYCLE_SECONDS = 480; // 8 minutos * 60 segundos = 480 segundos
+const DAY_PHASE_END_HOUR = (5 / 8) * 24; // Onde o dia (luz do sol forte) termina
+const NIGHT_PHASE_END_HOUR = (8 / 8) * 24; // Onde a noite termina (ciclo completo)
+
+
+// Definição dos itens de crafting
 const craftableItems = [
     {
         name: 'Fogueira',
@@ -95,14 +104,15 @@ function initializeGame() {
     highlightMesh.visible = false;
     scene.add(highlightMesh);
 
-    // --- Iluminação ---
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    // --- Iluminação (Alterada para variáveis globais) ---
+    ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-    dirLight.position.set(50, 100, 50);
-    dirLight.castShadow = true;
-    dirLight.shadow.mapSize.set(2048, 2048);
-    scene.add(dirLight);
+    
+    directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    directionalLight.position.set(50, 100, 50);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.set(2048, 2048);
+    scene.add(directionalLight);
 
     world = new World(scene);
     world.generate();
@@ -113,7 +123,7 @@ function initializeGame() {
 
     player = new Player();
     physics = new Physics(world, raycaster);
-    interactionHandler = new InteractionHandler(camera, world, player, raycaster); // Passa o player para InteractionHandler
+    interactionHandler = new InteractionHandler(camera, world, player, raycaster);
 
     // --- Adicionar Animais ---
     for(let i = 0; i < 15; i++) {
@@ -150,7 +160,6 @@ function initializeControls() {
                 renderCraftingList(craftableItems, player, handleCraftItem);
             }
         }
-        // NOVO: Lógica para selecionar ferramentas com 1 e 2
         if (e.code === 'Digit1') {
             selectTool(player, 'Machado');
         } else if (e.code === 'Digit2') {
@@ -187,7 +196,6 @@ function initializeControls() {
 }
 
 function handleCraftItem(item) {
-    // Ajuste para não permitir crafitar ferramenta se já tiver
     if ((item.name === 'Machado' && player.hasAxe) || (item.name === 'Picareta' && player.hasPickaxe)) {
         logMessage(`Você já possui ${item.name}.`, 'warning');
         return;
@@ -204,6 +212,104 @@ function handleCraftItem(item) {
     }
 }
 
+// Função para atualizar o ciclo dia/noite
+function updateDayNightCycle(deltaTime) {
+    dayTime += deltaTime / TOTAL_CYCLE_SECONDS * 24; // Atualiza o tempo do dia (0-24h)
+    if (dayTime >= 24) {
+        dayTime -= 24; // Reinicia o ciclo
+    }
+
+    let ambientIntensity, directionalIntensity;
+    let directionalColor, ambientColor, skyColor, fogColor;
+    let lightX, lightY, lightZ;
+
+    const sunriseStart = 4; // Começo do amanhecer (hora fictícia)
+    const sunriseEnd = 7;   // Fim do amanhecer, dia começa
+    const sunsetStart = 17; // Começo do entardecer
+    const sunsetEnd = 20;   // Fim do entardecer, noite começa
+
+    // Dia: 5 minutos (do nascer do sol ao pôr do sol)
+    // Noite: 3 minutos (do pôr do sol ao nascer do sol)
+    // Total: 8 minutos (480 segundos)
+
+    // Ajuste das transições para 5 minutos de dia e 3 minutos de noite
+    // Vamos mapear as 24h fictícias para o nosso tempo real de 8 minutos
+    // 0-24h (fictício) -> 0-480s (real)
+
+    // Período de "dia" em horas fictícias: (sunsetStart - sunriseEnd) + (24 - sunsetEnd + sunriseStart) se for contínuo
+    // Ou, mais fácil, dia dura 5/8 do total e noite 3/8 do total
+    // Dia vai de 4h (amanhecer) até 20h (entardecer), são 16h fictícias
+    // Noite vai de 20h (entardecer) até 4h (amanhecer), são 8h fictícias
+
+    // Ajuste da lógica para as cores e intensidades
+    // Amanhecer (transição da noite para o dia)
+    if (dayTime >= sunriseStart && dayTime < sunriseEnd) {
+        const t = (dayTime - sunriseStart) / (sunriseEnd - sunriseStart);
+        ambientIntensity = THREE.MathUtils.lerp(0.1, 0.7, t);
+        directionalIntensity = THREE.MathUtils.lerp(0.05, 1.5, t);
+        ambientColor = new THREE.Color(0x202040).lerp(new THREE.Color(0xFFFFFF), t);
+        directionalColor = new THREE.Color(0x202040).lerp(new THREE.Color(0xFFFFFF), t);
+        skyColor = new THREE.Color(0x000033).lerp(new THREE.Color(0x87CEEB), t);
+        fogColor = skyColor;
+        
+        lightX = THREE.MathUtils.lerp(-100, 50, t);
+        lightY = THREE.MathUtils.lerp(10, 100, t);
+        lightZ = THREE.MathUtils.lerp(-50, 50, t);
+    }
+    // Dia (luz plena)
+    else if (dayTime >= sunriseEnd && dayTime < sunsetStart) {
+        ambientIntensity = 0.7;
+        directionalIntensity = 1.5;
+        ambientColor = new THREE.Color(0xFFFFFF);
+        directionalColor = new THREE.Color(0xFFFFFF);
+        skyColor = new THREE.Color(0x87CEEB);
+        fogColor = skyColor;
+
+        const t = (dayTime - sunriseEnd) / (sunsetStart - sunriseEnd);
+        lightX = THREE.MathUtils.lerp(50, -50, t);
+        lightY = 100;
+        lightZ = THREE.MathUtils.lerp(50, -50, t);
+    }
+    // Entardecer (transição do dia para a noite)
+    else if (dayTime >= sunsetStart && dayTime < sunsetEnd) {
+        const t = (dayTime - sunsetStart) / (sunsetEnd - sunsetStart);
+        ambientIntensity = THREE.MathUtils.lerp(0.7, 0.1, t);
+        directionalIntensity = THREE.MathUtils.lerp(1.5, 0.05, t);
+        ambientColor = new THREE.Color(0xFFFFFF).lerp(new THREE.Color(0x202040), t);
+        directionalColor = new THREE.Color(0xFFFFFF).lerp(new THREE.Color(0x202040), t);
+        skyColor = new THREE.Color(0x87CEEB).lerp(new THREE.Color(0x000033), t);
+        fogColor = skyColor;
+
+        lightX = THREE.MathUtils.lerp(-50, -100, t);
+        lightY = THREE.MathUtils.lerp(100, 10, t);
+        lightZ = THREE.MathUtils.lerp(-50, -50, t);
+    }
+    // Noite (escuridão)
+    else {
+        ambientIntensity = 0.1;
+        directionalIntensity = 0.05;
+        ambientColor = new THREE.Color(0x202040);
+        directionalColor = new THREE.Color(0x202040);
+        skyColor = new THREE.Color(0x000033);
+        fogColor = skyColor;
+
+        lightX = 0; 
+        lightY = 50; 
+        lightZ = 0;
+    }
+
+    ambientLight.intensity = ambientIntensity;
+    ambientLight.color.copy(ambientColor);
+
+    directionalLight.intensity = directionalIntensity;
+    directionalLight.color.copy(directionalColor);
+    directionalLight.position.set(lightX, lightY, lightZ);
+
+    scene.background.copy(skyColor);
+    scene.fog.color.copy(fogColor);
+}
+
+
 function animate() {
     requestAnimationFrame(animate);
     const deltaTime = clock.getDelta();
@@ -214,6 +320,8 @@ function animate() {
         if (activeCampfire) {
             activeCampfire.update(deltaTime);
         }
+
+        updateDayNightCycle(deltaTime); // Chamada da função de ciclo dia/noite
 
         // Lógica para o destaque de interação
         raycaster.setFromCamera(new THREE.Vector2(), camera);
