@@ -1,3 +1,4 @@
+/* style.css */
 body { font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; background-color: #87ceeb; }
 #game-canvas { position: fixed; top: 0; left: 0; outline: none; }
 #hud-container {
@@ -106,4 +107,16 @@ body { font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; background
 
 #cooking-progress-container .progress-bar {
     background-color: #fca311; /* Cor de fogo/cozimento */
+}
+
+/* NOVO: Estilos para o modal de Abrigo */
+#shelter-modal { /* Adicione este bloco */
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+#shelter-modal.show { /* Adicione este bloco */
+    opacity: 1;
+    visibility: visible;
 }

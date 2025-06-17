@@ -4,19 +4,19 @@ export default class Player {
         this.health = 100;
         this.hunger = 0;
         this.thirst = 0;
+        this.coldness = 0; // NOVO: Nível de frio
         this.inventory = { 
-            'Madeira': 0,
-            'Pedra': 0,
+            'Madeira': 20,
+            'Pedra': 20,
             'Carne Crua': 0, 
             'Carne Cozida': 0,
-            'Peixe Cru': 0, // NOVO
-            'Peixe Cozido': 0, // NOVO
+            'Peixe Cru': 0, 
+            'Peixe Cozido': 0, 
             'Agua Suja': 0, 
             'Agua Limpa': 0 
         }; 
         this.hasCampfire = false;
-        this.hasAxe = false;
-        this.hasPickaxe = false;
+        this.hasShelter = false; // NOVO: Se o jogador tem um abrigo
         this.equippedTool = null;
     }
 
@@ -63,13 +63,13 @@ export default class Player {
         }
     }
 
-    // NOVO: Função para consumir peixe cozido
+    // Função para consumir peixe cozido
     eatCookedFish(logMessageCallback) {
         if (this.inventory['Peixe Cozido'] > 0) {
             this.inventory['Peixe Cozido']--;
-            this.hunger = Math.max(0, this.hunger - 30); // Restaura menos fome que carne
-            this.health = Math.min(100, this.health + 3); // Restaura menos vida que carne
-            logMessageCallback('Você comeu peixe cozido. É bom!', 'success');
+            this.hunger = Math.max(0, this.hunger - 30); 
+            this.health = Math.min(100, this.health + 3); 
+            logMessageCallback('Você comeu peixe cozida. É bom!', 'success');
             return true;
         } else {
             logMessageCallback('Você não tem peixe cozido para comer.', 'warning');
@@ -92,11 +92,30 @@ export default class Player {
     }
 
     // A lógica do "tick" do jogo que afeta o jogador
-    gameTick(logMessageCallback) {
+    gameTick(logMessageCallback, isNight, isRaining, isNearShelterOrCampfire) { // Adicionado parâmetros
         if (this.health <= 0) return;
 
         this.thirst = Math.min(100, this.thirst + 1);
         this.hunger = Math.min(100, this.hunger + 0.5);
+        this.coldness = Math.max(0, this.coldness - 0.5); // Reduz frio naturalmente
+
+        if (isNight && !isNearShelterOrCampfire) { // Aumenta o frio à noite, se não estiver protegido
+            this.coldness = Math.min(100, this.coldness + 3);
+            logMessageCallback('Você está com frio na escuridão da noite!', 'warning');
+        } else if (isRaining && !isNearShelterOrCampfire) { // Aumenta o frio na chuva, se não estiver protegido
+            this.coldness = Math.min(100, this.coldness + 2);
+            logMessageCallback('Você está sentindo o frio da chuva!', 'warning');
+        } else if (isNearShelterOrCampfire) { // Reduz o frio se estiver perto de abrigo ou fogueira
+            this.coldness = Math.max(0, this.coldness - 5);
+        } else { // Se não estiver em nenhuma das condições acima (ex: dia, sem chuva)
+            this.coldness = Math.max(0, this.coldness - 1); // Redução menor
+        }
+        
+        // Verifica se há frio excessivo
+        if (this.coldness >= 100) {
+            this.health = Math.max(0, this.health - 3);
+            logMessageCallback('Você está congelando e perdendo vida!', 'danger');
+        }
 
         if (this.hunger >= 100 || this.thirst >= 100) {
             this.health = Math.max(0, this.health - 2);

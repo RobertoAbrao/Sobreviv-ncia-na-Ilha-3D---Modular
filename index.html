@@ -29,6 +29,10 @@
                     <div class="flex justify-between items-center mb-1 text-sm"><span>💧 Sede</span><span id="thirst-value">0/100</span></div>
                     <div class="progress-bar-container"><div id="thirst-bar" class="progress-bar bg-blue-500 w-0"></div></div>
                 </div>
+                <div> 
+                    <div class="flex justify-between items-center mb-1 text-sm"><span>❄️ Frio</span><span id="coldness-value">0/100</span></div>
+                    <div class="progress-bar-container"><div id="coldness-bar" class="progress-bar bg-sky-500 w-0"></div></div>
+                </div>
             </div>
         </div>
 
@@ -83,6 +87,15 @@
             <h2 class="text-2xl font-bold mb-6 text-center">Fogueira</h2>
             <button id="close-campfire-modal" class="absolute top-4 right-4 text-gray-400 hover:text-white text-3xl font-bold leading-none">&times;</button>
             <div id="campfire-options-list" class="space-y-4">
+                </div>
+        </div>
+    </div>
+
+    <div id="shelter-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-xl text-white max-w-sm w-full relative border border-gray-700">
+            <h2 class="text-2xl font-bold mb-6 text-center">Abrigo</h2>
+            <button id="close-shelter-modal" class="absolute top-4 right-4 text-gray-400 hover:text-white text-3xl font-bold leading-none">&times;</button>
+            <div id="shelter-options-list" class="space-y-4">
                 </div>
         </div>
     </div>

@@ -2,19 +2,21 @@
 const healthBar = document.getElementById('health-bar');
 const hungerBar = document.getElementById('hunger-bar');
 const thirstBar = document.getElementById('thirst-bar');
+const coldnessBar = document.getElementById('coldness-bar'); // NOVO
 const healthValue = document.getElementById('health-value');
 const hungerValue = document.getElementById('hunger-value');
 const thirstValue = document.getElementById('thirst-value');
+const coldnessValue = document.getElementById('coldness-value'); // NOVO
 const messageLog = document.getElementById('message-log');
 const inventoryList = document.getElementById('inventory-list');
 const craftingModal = document.getElementById('crafting-modal');
 const craftingList = document.getElementById('crafting-list');
 
-// NOVO: Elementos do modal de interação
+// Elementos do modal de interação
 const interactionModal = document.getElementById('interaction-modal');
 const interactionList = document.getElementById('interaction-list');
 
-// NOVO: Elementos do modal da fogueira
+// Elementos do modal da fogueira
 const campfireModal = document.getElementById('campfire-modal');
 const campfireOptionsList = document.getElementById('campfire-options-list');
 
@@ -23,6 +25,11 @@ const hotbarSlot1 = document.getElementById('hotbar-slot-1');
 const hotbarSlot2 = document.getElementById('hotbar-slot-2');
 const hotbarItemIcon1 = hotbarSlot1.querySelector('.hotbar-item-icon');
 const hotbarItemIcon2 = hotbarSlot2.querySelector('.hotbar-item-icon');
+
+// NOVO: Elementos do modal de abrigo
+const shelterModal = document.getElementById('shelter-modal');
+const shelterOptionsList = document.getElementById('shelter-options-list');
+
 
 // Emojis para os itens
 const itemEmojis = {
@@ -35,8 +42,9 @@ const itemEmojis = {
     'Carne Cozida': '🍖',
     'Agua Suja': '💧 (Suja)',
     'Agua Limpa': '💧',
-    'Peixe Cru': '🐟', // Adicionado
-    'Peixe Cozido': '🐠' // Adicionado
+    'Peixe Cru': '🐟', 
+    'Peixe Cozido': '🐠',
+    'Abrigo': '⛺' // NOVO
 };
 
 export function updateUI(player) {
@@ -44,9 +52,11 @@ export function updateUI(player) {
     healthBar.style.width = `${player.health}%`;
     hungerBar.style.width = `${player.hunger}%`;
     thirstBar.style.width = `${player.thirst}%`;
+    coldnessBar.style.width = `${player.coldness}%`; // NOVO
     healthValue.textContent = `${Math.ceil(player.health)}/100`;
     hungerValue.textContent = `${Math.ceil(player.hunger)}/100`;
     thirstValue.textContent = `${Math.ceil(player.thirst)}/100`;
+    coldnessValue.textContent = `${Math.ceil(player.coldness)}/100`; // NOVO
 
     // Atualiza Inventário
     inventoryList.innerHTML = '';
@@ -63,6 +73,12 @@ export function updateUI(player) {
         const campfireEl = document.createElement('p');
         campfireEl.textContent = `${itemEmojis['Fogueira']} Fogueira (Construída)`;
         inventoryList.appendChild(campfireEl);
+    }
+    // NOVO: Exibe o abrigo no inventário se o jogador o tiver
+    if (player.hasShelter) {
+        const shelterEl = document.createElement('p');
+        shelterEl.textContent = `${itemEmojis['Abrigo']} Abrigo (Construído)`;
+        inventoryList.appendChild(shelterEl);
     }
 
     // Atualiza a Hotbar
@@ -102,7 +118,9 @@ export function renderCraftingList(craftableItems, player, onCraft) {
     craftingList.innerHTML = '';
     for (const item of craftableItems) {
         const hasTool = (item.name === 'Machado' && player.hasAxe) || (item.name === 'Picareta' && player.hasPickaxe);
-        const canCraft = player.hasResources(item.cost) && (!item.requires || player[item.requires]) && !hasTool;
+        // NOVO: Verifica se o abrigo já foi construído
+        const hasShelter = (item.name === 'Abrigo' && player.hasShelter);
+        const canCraft = player.hasResources(item.cost) && (!item.requires || player[item.requires]) && !hasTool && !hasShelter; // NOVO
 
         const itemEl = document.createElement('div');
         itemEl.className = 'crafting-item';
@@ -117,6 +135,10 @@ export function renderCraftingList(craftableItems, player, onCraft) {
         }
         if (hasTool) {
             requirementsHtml = `Você já possui ${item.name}!`;
+        }
+        // NOVO: Mensagem se o abrigo já foi construído
+        if (hasShelter) {
+            requirementsHtml = `Você já construiu um ${item.name}!`;
         }
 
         itemEl.innerHTML = `
@@ -134,7 +156,7 @@ export function renderCraftingList(craftableItems, player, onCraft) {
     }
 }
 
-// NOVO: Funções para o modal de interação (comer/beber)
+// Funções para o modal de interação (comer/beber)
 export function toggleInteractionModal(show) {
     if (show) {
         interactionModal.classList.remove('hidden');
@@ -168,6 +190,22 @@ export function renderInteractionList(player, onAction) {
         eatMeatButton.querySelector('button').addEventListener('click', () => onAction('eat'));
     }
 
+    // Botão Comer Peixe Cozido
+    const eatFishButton = document.createElement('div'); // NOVO
+    eatFishButton.className = 'crafting-item'; 
+    const canEatFish = player.inventory['Peixe Cozido'] > 0;
+    eatFishButton.innerHTML = `
+        <div>
+            <h3 class="font-semibold text-lg">${itemEmojis['Peixe Cozido']} Comer Peixe Cozido</h3>
+            <p class="crafting-requirements">Em inventário: ${player.inventory['Peixe Cozido'] || 0}</p>
+        </div>
+        <button data-action="eat-fish" ${canEatFish ? '' : 'disabled'}>Comer</button>
+    `;
+    interactionList.appendChild(eatFishButton);
+    if (canEatFish) {
+        eatFishButton.querySelector('button').addEventListener('click', () => onAction('eat-fish'));
+    }
+
     // Botão Beber Água Limpa
     const drinkWaterButton = document.createElement('div');
     drinkWaterButton.className = 'crafting-item'; // Reutilizando estilo
@@ -185,7 +223,7 @@ export function renderInteractionList(player, onAction) {
     }
 }
 
-// NOVO: Funções para o modal da fogueira
+// Funções para o modal da fogueira
 export function toggleCampfireModal(show) {
     if (show) {
         campfireModal.classList.remove('hidden');
@@ -200,7 +238,7 @@ export function toggleCampfireModal(show) {
     }
 }
 
-export function renderCampfireOptions(player, onCookMeat, onBoilWater) {
+export function renderCampfireOptions(player, onCookMeat, onBoilWater, onCookFish) { // Adicionado onCookFish
     campfireOptionsList.innerHTML = '';
 
     // Opção: Cozinhar Carne Crua
@@ -232,7 +270,7 @@ export function renderCampfireOptions(player, onCookMeat, onBoilWater) {
     `;
     campfireOptionsList.appendChild(cookFishOption);
     if (canCookFish) {
-        cookFishOption.querySelector('button').addEventListener('click', onCookMeat); // Reutiliza a mesma função de cozinhar carne
+        cookFishOption.querySelector('button').addEventListener('click', onCookFish); // Chama onCookFish
     }
 
     // Opção: Ferver Água Suja
@@ -252,6 +290,42 @@ export function renderCampfireOptions(player, onCookMeat, onBoilWater) {
     }
 }
 
+
+// NOVO: Funções para o modal de abrigo
+export function toggleShelterModal(show) {
+    if (show) {
+        shelterModal.classList.remove('hidden');
+        setTimeout(() => {
+            shelterModal.classList.add('show');
+        }, 10);
+    } else {
+        shelterModal.classList.remove('show');
+        setTimeout(() => {
+            shelterModal.classList.add('hidden');
+        }, 300);
+    }
+}
+
+export function renderShelterOptions(player, onSleep) {
+    shelterOptionsList.innerHTML = '';
+
+    // Opção: Dormir na barraca
+    const sleepOption = document.createElement('div');
+    sleepOption.className = 'crafting-item';
+    // Condição para dormir: Só pode dormir à noite
+    const canSleep = true; // A condição de ser noite será verificada na função `onSleep`
+    sleepOption.innerHTML = `
+        <div>
+            <h3 class="font-semibold text-lg">😴 Dormir na Barraca</h3>
+            <p class="crafting-requirements">Pula para o próximo dia.</p>
+        </div>
+        <button data-action="sleep" ${canSleep ? '' : 'disabled'}>Dormir</button>
+    `;
+    shelterOptionsList.appendChild(sleepOption);
+    if (canSleep) {
+        sleepOption.querySelector('button').addEventListener('click', onSleep);
+    }
+}
 
 // Função para atualizar a hotbar visualmente
 function updateHotbar(player) {

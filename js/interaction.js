@@ -1,6 +1,6 @@
 // js/interaction.js
 import * as THREE from 'three';
-import { logMessage, toggleCampfireModal, renderCampfireOptions } from './ui.js'; // Importe as novas funções
+import { logMessage, toggleCampfireModal, renderCampfireOptions, toggleShelterModal, renderShelterOptions } from './ui.js'; // Importe as novas funções
 import { cookableItems } from './campfire.js'; 
 import { WATER_LEVEL } from './constants.js'; 
 
@@ -10,13 +10,14 @@ const cookingProgressBar = document.getElementById('cooking-progress-bar');
 const cookingProgressText = document.getElementById('cooking-progress-text');
 
 export default class InteractionHandler {
-    constructor(camera, world, player, raycaster, getActiveCampfire) {
+    constructor(camera, world, player, raycaster, getActiveCampfire, getActiveShelter) { // NOVO: Adicionado getActiveShelter
         this.camera = camera;
         this.world = world;
         this.player = player;
         this.raycaster = raycaster;
         this.maxInteractionDistance = 5;
         this.getActiveCampfire = getActiveCampfire;
+        this.getActiveShelter = getActiveShelter; // NOVO
         this.isCooking = false; 
     }
 
@@ -25,9 +26,13 @@ export default class InteractionHandler {
 
         const objectsToIntersect = [...this.world.trees.children, ...this.world.stones.children, ...this.world.animals.children];
         const activeCampfireMesh = this.getActiveCampfire() ? this.getActiveCampfire().mesh : null;
+        const activeShelterMesh = this.getActiveShelter() ? this.getActiveShelter().mesh : null; // NOVO
 
         if (activeCampfireMesh) {
             objectsToIntersect.push(activeCampfireMesh);
+        }
+        if (activeShelterMesh) { // NOVO
+            objectsToIntersect.push(activeShelterMesh);
         }
 
         const intersects = this.raycaster.intersectObjects(objectsToIntersect, true);
@@ -43,10 +48,9 @@ export default class InteractionHandler {
         const isInWaterArea = distToWaterPlane < this.world.waterMesh.geometry.parameters.width / 2;
 
         // Verifica se o jogador está dentro de uma altura razoável para coletar água
-        const isAtWaterLevel = playerPosition.y < WATER_LEVEL + 1.0; // Permite coletar se estiver na água ou um pouco acima dela
+        const isAtWaterLevel = playerPosition.y < WATER_LEVEL + 1.0; 
 
         if (isInWaterArea && isAtWaterLevel) {
-            // Se o jogador estiver na área da água e em um nível adequado, permitir a coleta
             this.collectWater();
             return; 
         }
@@ -61,7 +65,8 @@ export default class InteractionHandler {
                        clickedObject.parent !== this.world.trees && 
                        clickedObject.parent !== this.world.stones && 
                        clickedObject.parent !== this.world.animals &&
-                       clickedObject !== activeCampfireMesh
+                       clickedObject !== activeCampfireMesh &&
+                       clickedObject !== activeShelterMesh // NOVO
                        ) {
                     clickedObject = clickedObject.parent;
                 }
@@ -89,7 +94,11 @@ export default class InteractionHandler {
                     logMessage(`Você caçou um animal e obtejo ${meatAmount}x Carne Crua!`, 'success');
                 }
                 else if (activeCampfireMesh && clickedObject === activeCampfireMesh) {
-                    this.openCampfireMenu(); // Abre o menu da fogueira
+                    this.openCampfireMenu(); 
+                }
+                // NOVO: Interação com o abrigo (tecla E)
+                else if (activeShelterMesh && clickedObject === activeShelterMesh) {
+                    this.openShelterMenu();
                 }
             }
         }
@@ -106,35 +115,50 @@ export default class InteractionHandler {
             return;
         }
 
-        toggleCampfireModal(true); // Exibe o modal
+        toggleCampfireModal(true); 
         renderCampfireOptions(this.player, 
-            () => this.cookItemAtCampfire('meat'), // Passa uma função para cozinhar carne
-            () => this.boilWaterAtCampfire()      // Passa uma função para ferver água
+            () => this.cookItemAtCampfire('meat'), 
+            () => this.boilWaterAtCampfire(),
+            () => this.cookItemAtCampfire('fish') // NOVO
         );
-        document.exitPointerLock(); // Sai do modo de travamento do ponteiro
+        document.exitPointerLock(); 
     }
+
+    // NOVO: Abre o modal de opções do abrigo
+    openShelterMenu() {
+        if (!this.getActiveShelter()) {
+            logMessage('Não há um abrigo ativo para interagir.', 'warning');
+            return;
+        }
+        toggleShelterModal(true);
+        // Não há opções de ação dentro do abrigo ainda, mas o modal pode ser aberto.
+        // As ações como "dormir" serão tratadas via keybind (ex: tecla L), mas o modal pode ser um ponto de partida.
+        logMessage('Você entrou no seu abrigo. Pressione L para mais opções.', 'info');
+        document.exitPointerLock();
+    }
+
 
     // NOVO: Inicia o processo de cozimento de carne ou peixe
     cookItemAtCampfire(type) {
         let recipe;
+        let consumedItem, producedItem;
+
         if (type === 'meat') {
             recipe = cookableItems.find(item => item.produces === 'Carne Cozida');
+            consumedItem = 'Carne Crua';
+            producedItem = 'Carne Cozida';
             if (this.player.inventory['Carne Crua'] === 0) {
                 logMessage('Você não tem carne crua para cozinhar.', 'warning');
                 return;
             }
-            recipe.name = 'Carne Crua'; // Garante que o nome do item de origem esteja correto para o log
-            recipe.produces = 'Carne Cozida';
-            recipe.amount = 1; // Cozinha um por um
-        } else if (type === 'fish') { // Adicionado para peixe
-            recipe = cookableItems.find(item => item.produces === 'Peixe Cozido'); // Crie uma receita para peixe cozido no campfire.js
+        } else if (type === 'fish') { 
+            recipe = cookableItems.find(item => item.produces === 'Peixe Cozido'); 
+            consumedItem = 'Peixe Cru';
+            producedItem = 'Peixe Cozido';
             if (this.player.inventory['Peixe Cru'] === 0) {
                 logMessage('Você não tem peixe cru para cozinhar.', 'warning');
                 return;
             }
-            recipe.name = 'Peixe Cru';
-            recipe.produces = 'Peixe Cozido';
-            recipe.amount = 1;
         } else {
             return;
         }
@@ -145,17 +169,14 @@ export default class InteractionHandler {
         }
 
         this.isCooking = true;
-        toggleCampfireModal(false); // Fecha o modal da fogueira
+        toggleCampfireModal(false); 
         cookingProgressContainer.classList.remove('hidden');
 
         let processedAmount = 0;
-        const totalToProcess = (type === 'meat') ? this.player.inventory['Carne Crua'] : this.player.inventory['Peixe Cru'];
+        const totalToProcess = this.player.inventory[consumedItem];
 
         const processingInterval = setInterval(() => {
             if (processedAmount < totalToProcess) {
-                const consumedItem = (type === 'meat') ? 'Carne Crua' : 'Peixe Cru';
-                const producedItem = (type === 'meat') ? 'Carne Cozida' : 'Peixe Cozido';
-
                 if (this.player.consumeResources({ [consumedItem]: recipe.amount })) {
                     this.player.addToInventory(producedItem, recipe.amount);
                     processedAmount++;
@@ -194,7 +215,7 @@ export default class InteractionHandler {
         }
 
         this.isCooking = true;
-        toggleCampfireModal(false); // Fecha o modal da fogueira
+        toggleCampfireModal(false); 
         cookingProgressContainer.classList.remove('hidden');
 
         let processedAmount = 0;
