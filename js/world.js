@@ -4,8 +4,6 @@ import { createNoise2D } from 'simplex-noise';
 import { ISLAND_SIZE, WATER_LEVEL } from './constants.js';
 import Animal from './animal.js';
 
-// NOVA FUNÇÃO: Cria um gerador de números pseudo-aleatórios a partir de uma semente.
-// Isso garante que, para a mesma semente, a sequência de números aleatórios seja sempre a mesma.
 function createSeededRandom(seed) {
     let s = seed;
     return function() {
@@ -27,8 +25,6 @@ export default class World {
         this.initialStoneCount = 50;
         this.initialAnimalCount = 15;
         
-        // MODIFICADO: Usamos nossa nova função para criar um gerador de aleatoriedade
-        // baseado na semente, que é o que createNoise2D espera.
         const seededRandom = createSeededRandom(this.seed);
         this.noise2D = createNoise2D(seededRandom); 
     }
@@ -160,9 +156,9 @@ export default class World {
         this.stones.add(stoneMesh);
     }
 
-    createAnimal(position, color) {
-        const animal = new Animal(this.scene, position, color);
-        this.animals.add(animal.mesh);
+    createAnimal(position, objPath = 'models/tartaruga/tartaruga.obj', mtlPath = 'models/tartaruga/tartaruga.mtl', scale = 0.05, rotationY = 0) {
+        const animal = new Animal(this.scene, position, objPath, mtlPath, scale, rotationY);
+        this.animals.add(animal.mesh); 
         return animal;
     }
     
@@ -208,7 +204,7 @@ export default class World {
             const z = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
             const y = this.getTerrainHeight(x, z, new THREE.Raycaster());
             if(y > WATER_LEVEL) {
-               const newAnimalInstance = new Animal(this.scene, new THREE.Vector3(x, y + 0.4, z), Math.random() * 0xffffff);
+               const newAnimalInstance = new Animal(this.scene, new THREE.Vector3(x, y + 0.4, z), 'models/tartaruga/tartaruga.obj', 'models/tartaruga/tartaruga.mtl', 0.05, Math.random() * Math.PI * 2);
                this.animals.add(newAnimalInstance.mesh);
                console.log("Animal renasceu com sucesso!");
             }

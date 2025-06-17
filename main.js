@@ -241,7 +241,9 @@ export async function initializeGame(user) {
         const aZ = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
         const aY = world.getTerrainHeight(aX, aZ, raycaster);
         if(aY > WATER_LEVEL) {
-           const newAnimal = world.createAnimal(new THREE.Vector3(aX, aY + 0.4, aZ), Math.random() * 0xffffff);
+           // CORREÇÃO: Removido o argumento de cor.
+           // Agora, o createAnimal usará os caminhos padrão para OBJ e MTL da tartaruga.
+           const newAnimal = world.createAnimal(new THREE.Vector3(aX, aY + 0.4, aZ));
            animalsInstances.push(newAnimal);
         }
     }
