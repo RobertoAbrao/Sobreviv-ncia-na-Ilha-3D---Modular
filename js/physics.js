@@ -1,32 +1,29 @@
 // js/physics.js
 import * as THREE from 'three';
-import { PLAYER_HEIGHT, WATER_LEVEL, ISLAND_SIZE } from './constants.js'; // Importe ISLAND_SIZE
-import { logMessage } from './ui.js'; // Importe logMessage para mensagens no console do jogo
+import { PLAYER_HEIGHT, WATER_LEVEL, ISLAND_SIZE } from './constants.js';
+import { logMessage } from './ui.js';
 
 export default class Physics {
     constructor(world, raycaster) {
         this.world = world;
-        this.raycaster = raycaster;
+        this.raycaster = raycaster; // Mantemos o raycaster para futuras colisões (ex: com paredes)
         this.velocity = new THREE.Vector3();
         this.onGround = false;
         this.gravity = -30.0;
         this.playerSpeed = 5.0;
         this.jumpSpeed = 8.0;
-        this.swimSpeed = 3.0; // NOVO: Velocidade de natação
+        this.swimSpeed = 3.0;
     }
 
     update(camera, keys, deltaTime) {
-        // Pega a altura do terreno na posição ATUAL do jogador
-        const currentGroundY = this.world.getTerrainHeight(camera.position.x, camera.position.z, this.raycaster);
-        // Verifica se o jogador está nadando
-        // Considera o jogador "nadando" se a base dele estiver abaixo do nível da água ou ligeiramente acima, submerso até a metade
+        // MODIFICADO: A chamada não precisa mais do raycaster
+        const currentGroundY = this.world.getTerrainHeight(camera.position.x, camera.position.z);
         const isSwimming = camera.position.y < WATER_LEVEL + (PLAYER_HEIGHT * 0.5); 
 
         if (isSwimming) {
-            this.velocity.y = 0; // Remove gravidade ao nadar
-            this.onGround = false; // Não está no chão
+            this.velocity.y = 0;
+            this.onGround = false;
 
-            // Ajusta a velocidade do jogador ao nadar
             const swimDirection = new THREE.Vector3(
                 (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0), 0,
                 (keys['KeyS'] ? 1 : 0) - (keys['KeyW'] ? 1 : 0)
@@ -36,22 +33,18 @@ export default class Physics {
             this.velocity.x = swimDirection.x * this.swimSpeed;
             this.velocity.z = swimDirection.z * this.swimSpeed;
             
-            // Permite subir e descer na água com espaço e shift/ctrl (ou outra tecla)
             if (keys['Space']) {
                 this.velocity.y = this.swimSpeed;
-            } else if (keys['ShiftLeft'] || keys['ControlLeft']) { // Exemplo: nadar para baixo
+            } else if (keys['ShiftLeft'] || keys['ControlLeft']) {
                 this.velocity.y = -this.swimSpeed;
             } else {
-                // Flutua para a superfície da água se não estiver subindo ou descendo ativamente
-                // Garante que o jogador não afunde infinitamente e fique na superfície
-                if (camera.position.y < WATER_LEVEL + (PLAYER_HEIGHT * 0.8)) { // Flutua até que 80% do jogador esteja fora da água
-                    this.velocity.y = 0.5; // Flutuação lenta
+                if (camera.position.y < WATER_LEVEL + (PLAYER_HEIGHT * 0.8)) {
+                    this.velocity.y = 0.5;
                 } else {
-                    this.velocity.y = 0; // Para de flutuar ao atingir a superfície
+                    this.velocity.y = 0;
                 }
             }
         } else {
-            // Aplica gravidade normalmente quando não está nadando
             this.velocity.y += this.gravity * deltaTime;
             const moveDirection = new THREE.Vector3(
                 (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0), 0,
@@ -64,27 +57,24 @@ export default class Physics {
         }
         
         const moveStep = this.velocity.clone().multiplyScalar(deltaTime);
-        this.checkCollisionsAndMove(camera, moveStep, keys, isSwimming); // Passa isSwimming
+        this.checkCollisionsAndMove(camera, moveStep, keys, isSwimming);
     }
     
     checkCollisionsAndMove(camera, moveStep, keys, isSwimming) {
-        // Pega a altura do terreno na posição FUTURA do jogador (após o movimento horizontal)
         const nextX = camera.position.x + moveStep.x;
         const nextZ = camera.position.z + moveStep.z;
-        const groundYAtNextPos = this.world.getTerrainHeight(nextX, nextZ, this.raycaster);
+        // MODIFICADO: A chamada não precisa mais do raycaster
+        const groundYAtNextPos = this.world.getTerrainHeight(nextX, nextZ);
 
-        // Se não estiver nadando, a lógica de colisão com o chão é aplicada
         if (!isSwimming) {
-            // Calcula a altura alvo do jogador: altura do terreno + altura do jogador
             const targetPlayerY = groundYAtNextPos + PLAYER_HEIGHT;
 
-            // Se o jogador estiver abaixo da altura alvo (ou caindo para lá)
             if (camera.position.y + moveStep.y < targetPlayerY) {
-                this.velocity.y = 0; // Zera a velocidade vertical para parar a queda
-                moveStep.y = targetPlayerY - camera.position.y; // Ajusta o passo vertical para levá-lo exatamente ao topo
-                this.onGround = true; // Marca que está no chão
+                this.velocity.y = 0;
+                moveStep.y = targetPlayerY - camera.position.y;
+                this.onGround = true;
             } else {
-                this.onGround = false; // Se estiver no ar, não está no chão
+                this.onGround = false;
             }
 
             if (keys['Space'] && this.onGround) {
@@ -92,8 +82,6 @@ export default class Physics {
                 this.onGround = false;
             }
         } else {
-            // Se estiver nadando, ajusta a posição Y para manter o jogador na superfície da água
-            // A flutuação já é controlada no update, aqui apenas garantimos que não vá abaixo da água
             if (camera.position.y + moveStep.y < WATER_LEVEL + (PLAYER_HEIGHT * 0.5)) {
                 moveStep.y = (WATER_LEVEL + (PLAYER_HEIGHT * 0.5)) - camera.position.y;
             }
@@ -101,16 +89,13 @@ export default class Physics {
         
         camera.position.add(moveStep);
 
-        // Teletransporte apenas se o jogador cair MUITO abaixo do nível da água
-        // ou for longe demais no mar, ou se for para uma área inválida no terreno
         const currentWaterLevel = this.world.waterMesh.position.y;
-        if (camera.position.y < currentWaterLevel - 10 || // Cair muito fundo na água
-            Math.abs(camera.position.x) > ISLAND_SIZE / 2 + 10 || // Sair da ilha no eixo X
-            Math.abs(camera.position.z) > ISLAND_SIZE / 2 + 10 ||    // Sair da ilha no eixo Z
-            (groundYAtNextPos === 0 && camera.position.y > WATER_LEVEL + 5 && !isSwimming) // Caso caia em um buraco no terreno (fora d'água)
+        if (camera.position.y < currentWaterLevel - 10 ||
+            Math.abs(camera.position.x) > ISLAND_SIZE / 2 + 10 ||
+            Math.abs(camera.position.z) > ISLAND_SIZE / 2 + 10 ||
+            (groundYAtNextPos === 0 && camera.position.y > WATER_LEVEL + 5 && !isSwimming)
         ) {
-            // Reposiciona o jogador para um ponto seguro
-            camera.position.set(0, this.world.getTerrainHeight(0, 0, this.raycaster) + PLAYER_HEIGHT, 0);
+            camera.position.set(0, this.world.getTerrainHeight(0, 0) + PLAYER_HEIGHT, 0);
             logMessage('Você foi arrastado pela correnteza, caiu muito fundo ou saiu da ilha!', 'danger');
         }
     }
