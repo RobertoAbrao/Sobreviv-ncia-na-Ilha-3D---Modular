@@ -10,12 +10,15 @@ import { Campfire, campfireCost } from './js/campfire.js';
 import { Shelter, shelterCost } from './js/shelter.js';
 import { updateUI, logMessage, toggleCraftingModal, renderCraftingList, selectTool, toggleInteractionModal, renderInteractionList, toggleCampfireModal, toggleShelterModal, renderShelterOptions } from './js/ui.js';
 import { setInitializeGameCallback } from './js/auth.js';
+import { Sky } from './js/Sky.js';
 
 import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 // --- Variáveis Globais da Cena ---
 let scene, camera, renderer, clock, raycaster;
 let world, player, physics, interactionHandler;
+let sky;
+let sun;
 let animalsInstances = [];
 let keys = {};
 let isCraftingModalOpen = false;
@@ -28,7 +31,7 @@ let activeCampfire = null;
 let activeShelter = null;
 
 let ambientLight, directionalLight;
-let dayTime = 8; // Inicia o dia às 8h por padrão
+let dayTime = 8;
 const TOTAL_CYCLE_SECONDS = 480;
 let isNight = false;
 let isRaining = false;
@@ -114,8 +117,7 @@ const craftableItems = [
             scene.add(newShelter.mesh);
             activeShelter = newShelter;
             player.hasShelter = true;
-            // Adicionado: Salvar a localização da barraca
-            player.shelterLocation = { x: position.x, y: position.y, z: position.z }; // Salva a posição
+            player.shelterLocation = { x: position.x, y: position.y, z: position.z };
             logMessage('Você construiu um abrigo! Um lugar para se proteger.', 'success');
             return true;
         },
@@ -130,8 +132,6 @@ export async function initializeGame(user) {
     console.log("Iniciando jogo para o usuário:", currentUser.email || "Offline");
 
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87ceeb);
-    scene.fog = new THREE.Fog(0x87ceeb, 40, ISLAND_SIZE);
 
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game-canvas'), antialias: true });
@@ -139,6 +139,7 @@ export async function initializeGame(user) {
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = true;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.5;
 
     clock = new THREE.Clock();
     raycaster = new THREE.Raycaster();
@@ -153,32 +154,31 @@ export async function initializeGame(user) {
     scene.add(ambientLight);
 
     directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-    directionalLight.position.set(50, 100, 50);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.set(2048, 2048);
     scene.add(directionalLight);
 
+    sky = new Sky();
+    sky.scale.setScalar(ISLAND_SIZE * 3);
+    scene.add(sky);
+    sun = new THREE.Vector3();
+
     player = new Player();
 
-    // --- LÓGICA DE CARREGAMENTO/CRIAÇÃO DO MUNDO ---
     if (user.uid !== 'offline-player') {
         const playerDocRef = doc(db, "players", user.uid);
         const docSnap = await getDoc(playerDocRef);
 
         let worldSeed;
         if (docSnap.exists() && docSnap.data().worldSeed) {
-            // Jogador existente, carrega a semente do mundo
             worldSeed = docSnap.data().worldSeed;
             logMessage(`Semente do mundo carregada para ${user.email}!`, 'success');
-            
-            // Carrega o estado do jogador e o dayTime
             if (docSnap.data().playerState) {
                 player.loadState(docSnap.data().playerState);
-                dayTime = docSnap.data().dayTime !== undefined ? docSnap.data().dayTime : 8; // Carrega dayTime
+                dayTime = docSnap.data().dayTime !== undefined ? docSnap.data().dayTime : 8;
                 logMessage(`Progresso do jogador carregado!`, 'success');
             }
         } else {
-            // Novo jogador, cria e salva uma nova semente
             worldSeed = Math.random();
             logMessage(`Nova semente de mundo gerada para ${user.email}.`, 'info');
             try {
@@ -189,19 +189,15 @@ export async function initializeGame(user) {
                 logMessage('Não foi possível salvar seu novo mundo.', 'danger');
             }
         }
-        // MODIFICADO: Passa a directionalLight para o construtor do World
         world = new World(scene, worldSeed, directionalLight);
 
     } else {
-        // Modo offline, cria um mundo aleatório que não será salvo
-        // MODIFICADO: Passa a directionalLight para o construtor do World
         world = new World(scene, Math.random(), directionalLight);
         logMessage("Jogando offline. Progresso não será salvo.", 'info');
     }
     
     world.generate();
     
-    // Recria a fogueira se existir no estado salvo
     if (player.hasCampfire && player.campfireLocation) {
         const campfirePos = new THREE.Vector3(
             player.campfireLocation.x,
@@ -214,7 +210,6 @@ export async function initializeGame(user) {
         logMessage('Fogueira carregada do progresso salvo!', 'info');
     }
 
-    // Adicionado: Recria a barraca se existir no estado salvo
     if (player.hasShelter && player.shelterLocation) {
         const shelterPos = new THREE.Vector3(
             player.shelterLocation.x,
@@ -226,8 +221,6 @@ export async function initializeGame(user) {
         activeShelter = loadedShelter;
         logMessage('Abrigo carregado do progresso salvo!', 'info');
     }
-
-    // FIM DA LÓGICA DO MUNDO
     
     const startX = 0, startZ = 0;
     const startY = world.getTerrainHeight(startX, startZ, raycaster) + PLAYER_HEIGHT;
@@ -236,15 +229,13 @@ export async function initializeGame(user) {
     physics = new Physics(world, raycaster);
     interactionHandler = new InteractionHandler(camera, world, player, raycaster, () => activeCampfire, () => activeShelter);
 
-    updateUI(player); // Atualiza a UI com os dados carregados ou iniciais
+    updateUI(player);
 
     for(let i = 0; i < world.initialAnimalCount; i++) {
         const aX = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
         const aZ = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
         const aY = world.getTerrainHeight(aX, aZ, raycaster);
         if(aY > WATER_LEVEL) {
-           // CORREÇÃO: Removido o argumento de cor.
-           // Agora, o createAnimal usará os caminhos padrão para OBJ e MTL da tartaruga.
            const newAnimal = world.createAnimal(new THREE.Vector3(aX, aY + 0.4, aZ));
            animalsInstances.push(newAnimal);
         }
@@ -275,11 +266,10 @@ async function savePlayerState() {
     if (!currentUser || currentUser.uid === 'offline-player' || !world) return;
 
     const playerState = player.saveState();
-    // MODIFICADO: Agora também salva a semente do mundo junto com o estado do jogador.
     const fullState = {
         playerState: playerState,
         worldSeed: world.seed,
-        dayTime: dayTime // SALVANDO O HORÁRIO DO DIA
+        dayTime: dayTime
     };
 
     try {
@@ -527,89 +517,49 @@ function checkProximityToShelterOrCampfire() {
     return false;
 }
 
+// MODIFICADO: Função inteiramente refatorada para um ciclo de 12h de dia.
 function updateDayNightCycle(deltaTime) {
     dayTime += deltaTime / TOTAL_CYCLE_SECONDS * 24;
     if (dayTime >= 24) {
         dayTime -= 24;
     }
 
-    let ambientIntensity, directionalIntensity;
-    let directionalColor, ambientColor, skyColor, fogColor;
-    let lightX, lightY, lightZ;
+    // 1. Define o início e a duração do período de luz do dia
+    const dayStart = 6.0;   // O dia começa às 6 AM
+    const dayEnd = 18.0;    // O dia termina às 6 PM (18:00)
+    const dayDuration = dayEnd - dayStart; // Duração de 12 horas
 
-    const sunriseStart = 4;
-    const sunriseEnd = 7;
-    const sunsetStart = 17;
-    const sunsetEnd = 20;
+    // 2. Calcula o progresso do dia (um valor de 0 a 1) e a intensidade do sol
+    // Fora do período de 6h-18h, o resultado do 'sin' será negativo, e o Math.max(0,...) garantirá que a intensidade seja 0.
+    const dayProgress = (dayTime - dayStart) / dayDuration;
+    const sunIntensity = Math.max(0, Math.sin(dayProgress * Math.PI));
 
-    if (dayTime >= sunriseStart && dayTime < sunriseEnd) {
-        const t = (dayTime - sunriseStart) / (sunriseEnd - sunriseStart);
-        ambientIntensity = THREE.MathUtils.lerp(0.1, 0.7, t);
-        directionalIntensity = THREE.MathUtils.lerp(0.05, 1.5, t);
-        ambientColor = new THREE.Color(0x202040).lerp(new THREE.Color(0xFFFFFF), t);
-        directionalColor = new THREE.Color(0x202040).lerp(new THREE.Color(0xFFFFFF), t);
-        skyColor = new THREE.Color(0x000033).lerp(new THREE.Color(0x87CEEB), t);
-        fogColor = skyColor;
+    // 3. Define a flag 'isNight' para a lógica do jogo. É noite se a hora for antes das 6h ou depois das 18h.
+    isNight = (dayTime < dayStart || dayTime >= dayEnd);
 
-        lightX = THREE.MathUtils.lerp(-100, 50, t);
-        lightY = THREE.MathUtils.lerp(10, 100, t);
-        lightZ = THREE.MathUtils.lerp(-50, 50, t);
-        isNight = false;
-    }
-    else if (dayTime >= sunriseEnd && dayTime < sunsetStart) {
-        ambientIntensity = 0.7;
-        directionalIntensity = 1.5;
-        ambientColor = new THREE.Color(0xFFFFFF);
-        directionalColor = new THREE.Color(0xFFFFFF);
-        skyColor = new THREE.Color(0x87CEEB);
-        fogColor = skyColor;
+    // --- Atualiza o Shader do Céu ---
+    const uniforms = sky.material.uniforms;
+    uniforms['turbidity'].value = 10;
+    uniforms['rayleigh'].value = isNight ? 0.2 : 3; // Céu menos azul à noite
+    uniforms['mieCoefficient'].value = 0.005;
+    uniforms['mieDirectionalG'].value = 0.8;
 
-        const t = (dayTime - sunriseEnd) / (sunsetStart - sunriseEnd);
-        lightX = THREE.MathUtils.lerp(50, -50, t);
-        lightY = 100;
-        lightZ = THREE.MathUtils.lerp(50, -50, t);
-        isNight = false;
-    }
-    else if (dayTime >= sunsetStart && dayTime < sunsetEnd) {
-        const t = (dayTime - sunsetStart) / (sunsetEnd - sunsetStart);
-        ambientIntensity = THREE.MathUtils.lerp(0.7, 0.1, t);
-        directionalIntensity = THREE.MathUtils.lerp(1.5, 0.05, t);
-        ambientColor = new THREE.Color(0xFFFFFF).lerp(new THREE.Color(0x202040), t);
-        directionalColor = new THREE.Color(0xFFFFFF).lerp(new THREE.Color(0x202040), t);
-        skyColor = new THREE.Color(0x87CEEB).lerp(new THREE.Color(0x000033), t);
-        fogColor = skyColor;
+    // 4. Calcula a posição angular do sol no céu
+    const elevation = sunIntensity * 90; // Elevação em graus (0° no horizonte, 90° no pico)
+    const azimuth = 180; // Posição no horizonte (180 = sul)
+    
+    const phi = THREE.MathUtils.degToRad(90 - elevation);
+    const theta = THREE.MathUtils.degToRad(azimuth);
 
-        lightX = THREE.MathUtils.lerp(-50, -100, t);
-        lightY = THREE.MathUtils.lerp(100, 10, t);
-        lightZ = THREE.MathUtils.lerp(-50, -50, t);
-        isNight = true;
-    }
-    else {
-        ambientIntensity = 0.1;
-        directionalIntensity = 0.05;
-        ambientColor = new THREE.Color(0x202040);
-        directionalColor = new THREE.Color(0x202040);
-        skyColor = new THREE.Color(0x000033);
-        fogColor = skyColor;
+    sun.setFromSphericalCoords(1, phi, theta);
+    uniforms['sunPosition'].value.copy(sun);
+    
+    // --- Atualiza a Iluminação da Cena para corresponder ao céu ---
+    directionalLight.position.copy(sun).multiplyScalar(100);
+    directionalLight.intensity = sunIntensity * 1.5;
+    ambientLight.intensity = sunIntensity * 0.7; // Luz ambiente também diminui com o sol
 
-        lightX = 0;
-        lightY = 50;
-        lightZ = 0;
-        isNight = true;
-    }
-
-    ambientLight.intensity = ambientIntensity;
-    ambientLight.color.copy(ambientColor);
-
-    directionalLight.intensity = directionalIntensity;
-    directionalLight.color.copy(directionalColor);
-    directionalLight.position.set(lightX, lightY, lightZ);
-
-    scene.background.copy(skyColor);
-    scene.fog.color.copy(fogColor);
-
-    // ATUALIZAÇÃO: Adicione a atualização do contador de tempo na UI
-    updateGameTimeUI(); // Adicionado para exibir o tempo
+    updateGameTimeUI();
 }
 
 function updateWeather() {
@@ -675,14 +625,12 @@ function animate() {
     requestAnimationFrame(animate);
     const deltaTime = clock.getDelta();
 
-    // NOVO: Adicione esta linha para animar o oceano
     if (world && world.waterMesh) {
         world.waterMesh.material.uniforms[ 'time' ].value += deltaTime;
     }
 
     if (!isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen && !isShelterModalOpen) {
         physics.update(camera, keys, deltaTime);
-        // MODIFICADO: Passando a instância global de raycaster para animal.update
         animalsInstances.forEach(animal => animal.update(deltaTime, world, raycaster)); 
         if (activeCampfire) {
             activeCampfire.update(deltaTime);
@@ -697,7 +645,6 @@ function animate() {
             }
         }
 
-        // Esta parte do raycaster.setFromCamera já usa o raycaster global.
         raycaster.setFromCamera(new THREE.Vector2(), camera);
         const objectsToIntersect = [...world.trees.children, ...world.stones.children, ...world.animals.children];
         const activeCampfireMesh = activeCampfire ? activeCampfire.mesh : null;
