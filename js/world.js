@@ -6,6 +6,7 @@ import Animal from './animal.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 import { Water } from './Water.js'; // NOVO: Importa o shader de oceano
+import { createRock } from './rock.js'; // ADICIONADO: Importa a função das novas pedras
 
 function createSeededRandom(seed) {
     let s = seed;
@@ -243,13 +244,17 @@ export default class World {
         });
     }
 
+    // MODIFICADO: Esta função agora chama a função importada de rock.js
     createStone(x, y, z) {
-        const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8 });
-        const stoneGeo = new THREE.IcosahedronGeometry(Math.random() * 0.4 + 0.2, 0);
-        const stoneMesh = new THREE.Mesh(stoneGeo, stoneMaterial);
-        stoneMesh.position.set(x, y + 0.2, z);
-        stoneMesh.castShadow = true;
-        this.stones.add(stoneMesh);
+        // A função `createRock` do seu outro arquivo é chamada aqui.
+        // Ela deve criar a rocha com as texturas PBR e adicioná-la à cena.
+        // Opcionalmente, ela pode retornar o objeto da rocha para gerenciamento.
+        const rockObject = createRock(this.scene, new THREE.Vector3(x, y, z));
+        
+        // Adicionamos a rocha criada ao nosso grupo de pedras para gerenciamento.
+        // Se `createRock` já adiciona à cena, o comando abaixo irá re-parentar
+        // o objeto para este grupo, o que é o comportamento correto.
+        this.stones.add(rockObject);
     }
 
     createAnimal(position, objPath = 'models/tartaruga/tartaruga.obj', mtlPath = 'models/tartaruga/tartaruga.mtl', scale = 0.05, rotationY = 0) {
