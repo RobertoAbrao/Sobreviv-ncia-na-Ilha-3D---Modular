@@ -5,8 +5,9 @@ import { ISLAND_SIZE, WATER_LEVEL } from './constants.js';
 import Animal from './animal.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
-import { Water } from './Water.js'; // NOVO: Importa o shader de oceano
-import { createRock } from './rock.js'; // ADICIONADO: Importa a função das novas pedras
+import { Water } from './Water.js';
+import { createRock } from './rock.js';
+import { createTerrainMaterial } from './grass.js'; // ADICIONADO: Import do novo módulo de grama
 
 function createSeededRandom(seed) {
     let s = seed;
@@ -20,13 +21,12 @@ const objLoader = new OBJLoader();
 const mtlLoader = new MTLLoader();
 
 export default class World {
-    // MODIFICADO: O construtor agora também recebe a luz direcional
     constructor(scene, seed, directionalLight) {
         this.scene = scene;
         this.seed = seed;
-        this.directionalLight = directionalLight; // NOVO: Armazena a referência da luz
+        this.directionalLight = directionalLight;
         this.terrainMesh = null;
-        this.waterMesh = null; // Este será o nosso oceano
+        this.waterMesh = null;
         this.trees = new THREE.Group();
         this.stones = new THREE.Group();
         this.animals = new THREE.Group();
@@ -41,12 +41,11 @@ export default class World {
     generate() {
         console.log(`Gerando terreno suave com a semente: ${this.seed}`);
 
-        // --- GERAÇÃO DO TERRENO (Nenhuma mudança aqui, continua igual) ---
+        // --- GERAÇÃO DO TERRENO (Geometria continua igual) ---
         const terrainGeo = new THREE.PlaneGeometry(ISLAND_SIZE, ISLAND_SIZE, 200, 200);
         terrainGeo.rotateX(-Math.PI / 2);
 
         const vertices = terrainGeo.attributes.position;
-        const colors = [];
         const islandCenter = ISLAND_SIZE / 2;
 
         for (let i = 0; i < vertices.count; i++) {
@@ -58,33 +57,22 @@ export default class World {
             const noiseVal = this.noise2D((x + islandCenter) / 40, (z + islandCenter) / 40) * 6;
             let height = Math.max(0, falloff + noiseVal);
             vertices.setY(i, height);
-
-            const sandColor = new THREE.Color(0xC2B280);
-            const grassColor = new THREE.Color(0x4C7F4C);
-            const rockColor = new THREE.Color(0x808080);
-            let finalColor = new THREE.Color();
-
-            if (height < WATER_LEVEL + 1.5) {
-                finalColor.copy(sandColor);
-            } else if (height < 12) {
-                finalColor.copy(grassColor);
-            } else {
-                const t = Math.min(1, (height - 12) / 6);
-                finalColor.lerpColors(grassColor, rockColor, t);
-            }
-            colors.push(finalColor.r, finalColor.g, finalColor.b);
         }
         terrainGeo.attributes.position.needsUpdate = true;
         terrainGeo.computeVertexNormals();
-        terrainGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        
+        // Adicionar o segundo conjunto de UVs para o Ambient Occlusion funcionar
+        terrainGeo.setAttribute('uv2', terrainGeo.attributes.uv);
+        
+        // MODIFICADO: A criação do material agora é feita por uma função externa
+        const terrainMaterial = createTerrainMaterial();
 
-        const terrainMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.1, roughness: 0.8 });
         this.terrainMesh = new THREE.Mesh(terrainGeo, terrainMaterial);
         this.terrainMesh.receiveShadow = true;
         this.terrainMesh.castShadow = true;
         this.scene.add(this.terrainMesh);
 
-        // --- GERAÇÃO DA ÁGUA (TODA ESTA SEÇÃO FOI SUBSTITUÍDA) ---
+        // --- GERAÇÃO DA ÁGUA ---
         const waterGeometry = new THREE.PlaneGeometry(ISLAND_SIZE, ISLAND_SIZE);
 
         this.waterMesh = new Water(
@@ -103,9 +91,8 @@ export default class World {
             }
         );
         this.waterMesh.rotation.x = - Math.PI / 2;
-        this.waterMesh.position.y = WATER_LEVEL; // Posição vertical do oceano
+        this.waterMesh.position.y = WATER_LEVEL;
         this.scene.add(this.waterMesh);
-        // --- FIM DA SEÇÃO DE GERAÇÃO DA ÁGUA ---
 
         this.placeInitialTrees();
         this.placeInitialStones();
@@ -155,25 +142,20 @@ export default class World {
         treeGroup.position.set(x, y, z);
         this.trees.add(treeGroup);
 
-        // ATENÇÃO: Nome do arquivo corrigido aqui
         const objPath = 'models/arvore_lp/Lowpoly_tree_sample.obj';
         const mtlPath = 'models/arvore_lp/Lowpoly_tree_sample.mtl';
-        const scale = 0.5 + Math.random() * 0.5; // Ajuste a escala conforme necessário
-        const rotationY = Math.random() * Math.PI * 2; // Rotação aleatória no eixo Y
+        const scale = 0.5 + Math.random() * 0.5;
+        const rotationY = Math.random() * Math.PI * 2;
 
         mtlLoader.setPath('models/arvore_lp/');
-        // ATENÇÃO: Nome do arquivo corrigido aqui
         mtlLoader.load('Lowpoly_tree_sample.mtl', (materials) => {
             materials.preload();
             objLoader.setMaterials(materials);
             objLoader.setPath('models/arvore_lp/');
-            // ATENÇÃO: Nome do arquivo corrigido aqui
             objLoader.load('Lowpoly_tree_sample.obj', (object) => {
                 object.scale.set(scale, scale, scale);
                 object.rotation.y = rotationY;
-
                 object.position.y = 0;
-
                 object.traverse((child) => {
                     if (child.isMesh) {
                         child.castShadow = true;
@@ -185,75 +167,18 @@ export default class World {
             undefined,
             (error) => {
                 console.error('Erro ao carregar o modelo 3D da árvore (OBJ):', error);
-                // Fallback para geometria simples se o modelo não carregar
-                const trunkHeight = 2 + Math.random() * 2;
-                const trunkGeo = new THREE.CylinderGeometry(0.15, 0.25, trunkHeight, 8);
-                const trunkMesh = new THREE.Mesh(trunkGeo, new THREE.MeshStandardMaterial({color: 0x664422}));
-                trunkMesh.position.y = trunkHeight / 2;
-                trunkMesh.castShadow = true;
-
-                // Adiciona um material verde semi-transparente para as "folhas" de fallback
-                const leavesSize = 1 + Math.random();
-                const leavesGeo = new THREE.IcosahedronGeometry(leavesSize, 1);
-                const leavesMaterial = new THREE.MeshStandardMaterial({color: 0x228b22, transparent: true, opacity: 0.9});
-                const leavesMesh = new THREE.Mesh(leavesGeo, leavesMaterial);
-                leavesMesh.position.y = trunkHeight + leavesSize * 0.5;
-                leavesMesh.castShadow = true;
-
-                treeGroup.add(trunkMesh);
-                treeGroup.add(leavesMesh);
+                // Fallback
             });
         },
         undefined,
         (error) => {
             console.error('Erro ao carregar o arquivo MTL da árvore:', error);
-            // Fallback para OBJ sem MTL se o MTL não carregar
-            objLoader.setPath('models/arvore_lp/');
-            // ATENÇÃO: Nome do arquivo corrigido aqui
-            objLoader.load('Lowpoly_tree_sample.obj', (object) => {
-                object.scale.set(scale, scale, scale);
-                object.rotation.y = rotationY;
-                object.position.y = 0;
-                object.traverse((child) => {
-                    if (child.isMesh) {
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                        child.material = new THREE.MeshStandardMaterial({ color: 0x808080 }); // Material padrão cinza
-                    }
-                });
-                treeGroup.add(object);
-            }, undefined, (objError) => {
-                console.error('Erro ao carregar OBJ da árvore sem MTL:', objError);
-                // Fallback final para geometria simples
-                const trunkHeight = 2 + Math.random() * 2;
-                const trunkGeo = new THREE.CylinderGeometry(0.15, 0.25, trunkHeight, 8);
-                const trunkMesh = new THREE.Mesh(trunkGeo, new THREE.MeshStandardMaterial({color: 0x664422}));
-                trunkMesh.position.y = trunkHeight / 2;
-                trunkMesh.castShadow = true;
-
-                const leavesSize = 1 + Math.random();
-                const leavesGeo = new THREE.IcosahedronGeometry(leavesSize, 1);
-                const leavesMaterial = new THREE.MeshStandardMaterial({color: 0x228b22, transparent: true, opacity: 0.9});
-                const leavesMesh = new THREE.Mesh(leavesGeo, leavesMaterial);
-                leavesMesh.position.y = trunkHeight + leavesSize * 0.5;
-                leavesMesh.castShadow = true;
-
-                treeGroup.add(trunkMesh);
-                treeGroup.add(leavesMesh);
-            });
+            // Fallback
         });
     }
 
-    // MODIFICADO: Esta função agora chama a função importada de rock.js
     createStone(x, y, z) {
-        // A função `createRock` do seu outro arquivo é chamada aqui.
-        // Ela deve criar a rocha com as texturas PBR e adicioná-la à cena.
-        // Opcionalmente, ela pode retornar o objeto da rocha para gerenciamento.
         const rockObject = createRock(this.scene, new THREE.Vector3(x, y, z));
-        
-        // Adicionamos a rocha criada ao nosso grupo de pedras para gerenciamento.
-        // Se `createRock` já adiciona à cena, o comando abaixo irá re-parentar
-        // o objeto para este grupo, o que é o comportamento correto.
         this.stones.add(rockObject);
     }
 
@@ -283,7 +208,6 @@ export default class World {
 
     respawnTreeIfNeeded() {
         if (this.trees.children.length < this.initialTreeCount) {
-            console.log(`Há ${this.trees.children.length}/${this.initialTreeCount} árvores. Tentando renascer uma...`);
             if(this.createTreeAtRandomLocation()) {
                 console.log("Árvore renasceu com sucesso!");
             }
@@ -292,7 +216,6 @@ export default class World {
 
     respawnStoneIfNeeded() {
         if (this.stones.children.length < this.initialStoneCount) {
-            console.log(`Há ${this.stones.children.length}/${this.initialStoneCount} pedras. Tentando renascer uma...`);
             if(this.createStoneAtRandomLocation()) {
                 console.log("Pedra renasceu com sucesso!");
             }
