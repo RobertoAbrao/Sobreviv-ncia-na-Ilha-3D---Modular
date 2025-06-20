@@ -4,7 +4,7 @@ import { TICK_RATE, PLAYER_HEIGHT, ISLAND_SIZE, WATER_LEVEL } from './js/constan
 import World from './js/world.js';
 import Player from './js/player.js';
 import Physics from './js/physics.js';
-import Animal from './js/animal.js';
+// A importação de Animal não é mais necessária aqui, pois World gerencia isso
 import InteractionHandler from './js/interaction.js';
 import { Campfire, campfireCost } from './js/campfire.js';
 import { Shelter, shelterCost } from './js/shelter.js';
@@ -231,15 +231,23 @@ export async function initializeGame(user) {
 
     updateUI(player);
 
-    for(let i = 0; i < world.initialAnimalCount; i++) {
-        const aX = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
-        const aZ = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
-        const aY = world.getTerrainHeight(aX, aZ, raycaster);
-        if(aY > WATER_LEVEL) {
-           const newAnimal = world.createAnimal(new THREE.Vector3(aX, aY + 0.4, aZ));
-           animalsInstances.push(newAnimal);
+    // MODIFICADO: A criação de animais agora é assíncrona
+    // Primeiro, carregamos o modelo, e DEPOIS, no callback, criamos as instâncias.
+    world.loadAnimalModel(() => {
+        console.log("Callback de carregamento do animal chamado. Criando animais...");
+        for(let i = 0; i < world.initialAnimalCount; i++) {
+            const aX = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
+            const aZ = (Math.random() - 0.5) * ISLAND_SIZE * 0.7;
+            const aY = world.getTerrainHeight(aX, aZ, raycaster);
+            if(aY > WATER_LEVEL) {
+               // A criação agora é mais simples e usa o modelo pré-carregado do mundo
+               const newAnimal = world.createAnimal(new THREE.Vector3(aX, aY + 0.4, aZ));
+               if (newAnimal) {
+                   animalsInstances.push(newAnimal);
+               }
+            }
         }
-    }
+    });
 
     initializeControls();
     setInterval(() => {
@@ -262,6 +270,7 @@ export async function initializeGame(user) {
     animate();
 }
 
+// ... (restante do arquivo 'main.js' sem alterações)
 async function savePlayerState() {
     if (!currentUser || currentUser.uid === 'offline-player' || !world) return;
 
@@ -517,36 +526,28 @@ function checkProximityToShelterOrCampfire() {
     return false;
 }
 
-// MODIFICADO: Função inteiramente refatorada para um ciclo de 12h de dia.
 function updateDayNightCycle(deltaTime) {
     dayTime += deltaTime / TOTAL_CYCLE_SECONDS * 24;
     if (dayTime >= 24) {
         dayTime -= 24;
     }
 
-    // 1. Define o início e a duração do período de luz do dia
-    const dayStart = 6.0;   // O dia começa às 6 AM
-    const dayEnd = 18.0;    // O dia termina às 6 PM (18:00)
-    const dayDuration = dayEnd - dayStart; // Duração de 12 horas
-
-    // 2. Calcula o progresso do dia (um valor de 0 a 1) e a intensidade do sol
-    // Fora do período de 6h-18h, o resultado do 'sin' será negativo, e o Math.max(0,...) garantirá que a intensidade seja 0.
+    const dayStart = 6.0;
+    const dayEnd = 18.0;
+    const dayDuration = dayEnd - dayStart;
     const dayProgress = (dayTime - dayStart) / dayDuration;
     const sunIntensity = Math.max(0, Math.sin(dayProgress * Math.PI));
 
-    // 3. Define a flag 'isNight' para a lógica do jogo. É noite se a hora for antes das 6h ou depois das 18h.
     isNight = (dayTime < dayStart || dayTime >= dayEnd);
 
-    // --- Atualiza o Shader do Céu ---
     const uniforms = sky.material.uniforms;
     uniforms['turbidity'].value = 10;
-    uniforms['rayleigh'].value = isNight ? 0.2 : 3; // Céu menos azul à noite
+    uniforms['rayleigh'].value = isNight ? 0.2 : 3;
     uniforms['mieCoefficient'].value = 0.005;
     uniforms['mieDirectionalG'].value = 0.8;
 
-    // 4. Calcula a posição angular do sol no céu
-    const elevation = sunIntensity * 90; // Elevação em graus (0° no horizonte, 90° no pico)
-    const azimuth = 180; // Posição no horizonte (180 = sul)
+    const elevation = sunIntensity * 90;
+    const azimuth = 180;
     
     const phi = THREE.MathUtils.degToRad(90 - elevation);
     const theta = THREE.MathUtils.degToRad(azimuth);
@@ -554,10 +555,9 @@ function updateDayNightCycle(deltaTime) {
     sun.setFromSphericalCoords(1, phi, theta);
     uniforms['sunPosition'].value.copy(sun);
     
-    // --- Atualiza a Iluminação da Cena para corresponder ao céu ---
     directionalLight.position.copy(sun).multiplyScalar(100);
     directionalLight.intensity = sunIntensity * 1.5;
-    ambientLight.intensity = sunIntensity * 0.7; // Luz ambiente também diminui com o sol
+    ambientLight.intensity = sunIntensity * 0.7;
 
     updateGameTimeUI();
 }
