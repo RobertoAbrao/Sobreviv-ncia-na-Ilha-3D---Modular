@@ -9,6 +9,9 @@ export default class Animal {
         this.wanderAngle = Math.random() * Math.PI * 2;
         this.changeDirectionCooldown = 0;
         
+        // NOVO: Propriedade para guardar a altura do terreno calculada no loop lento
+        this.targetY = position.y;
+        
         if (loadedModel) {
             this.model = loadedModel.clone(true); 
             this.model.scale.set(scale, scale, scale);
@@ -34,38 +37,53 @@ export default class Animal {
         scene.add(this.mesh);
     }
 
-    // MODIFICADO: A assinatura do método não precisa mais do raycaster
-    update(deltaTime, world) { 
+    // NOVO: Loop de lógica (lento) para IA e cálculos pesados
+    think(world) {
         if (!this.model) return;
 
-        this.changeDirectionCooldown -= deltaTime;
+        // Usa um delta de tempo fixo (50ms = 20 ticks/s)
+        const LOGIC_TICK_DELTA = 0.05; 
+        this.changeDirectionCooldown -= LOGIC_TICK_DELTA;
+
         if (this.changeDirectionCooldown <= 0) {
             this.wanderAngle += (Math.random() - 0.5) * Math.PI;
             this.changeDirectionCooldown = 2 + Math.random() * 3;
+            // Gira o modelo quando a direção muda
+            this.model.rotation.y = -this.wanderAngle + Math.PI / 2;
         }
         
         const speed = 1.5;
         this.velocity.x = Math.cos(this.wanderAngle) * speed;
         this.velocity.z = Math.sin(this.wanderAngle) * speed;
         
-        const moveStep = this.velocity.clone().multiplyScalar(deltaTime);
-        const nextPos = this.mesh.position.clone().add(moveStep);
-        
-        // MODIFICADO: A chamada não precisa mais do raycaster
-        const groundY = world.getTerrainHeight(nextPos.x, nextPos.z); 
+        // O único cálculo pesado fica aqui
+        const checkPos = this.mesh.position.clone().add(this.velocity.clone().multiplyScalar(0.2));
+        const groundY = world.getTerrainHeight(checkPos.x, checkPos.z); 
         
         if (groundY > WATER_LEVEL) {
-            this.mesh.position.add(moveStep);
-            this.mesh.position.y = groundY + 0.4;
-
-            // NOVO: Atualiza a posição do colisor para seguir o animal
-            if (this.mesh.userData.collider) {
-                this.mesh.userData.collider.position.copy(this.mesh.position);
-            }
-
-            this.model.rotation.y = -this.wanderAngle + Math.PI / 2;
+            this.targetY = groundY + 0.4;
         } else {
+            // Se o próximo ponto for na água, inverte a direção
             this.wanderAngle += Math.PI;
+            this.velocity.x = -this.velocity.x;
+            this.velocity.z = -this.velocity.z;
+            this.model.rotation.y = -this.wanderAngle + Math.PI / 2;
+        }
+    }
+
+    // MODIFICADO: Loop de renderização (rápido) para movimento suave
+    update(deltaTime) { 
+        if (!this.model) return;
+
+        const moveStep = this.velocity.clone().multiplyScalar(deltaTime);
+        this.mesh.position.x += moveStep.x;
+        this.mesh.position.z += moveStep.z;
+        
+        // Interpola suavemente a altura em vez de defini-la diretamente
+        this.mesh.position.y = THREE.MathUtils.lerp(this.mesh.position.y, this.targetY, 0.05);
+
+        if (this.mesh.userData.collider) {
+            this.mesh.userData.collider.position.copy(this.mesh.position);
         }
     }
 }
