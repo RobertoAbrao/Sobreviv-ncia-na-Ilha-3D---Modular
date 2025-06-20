@@ -189,11 +189,13 @@ export async function initializeGame(user) {
                 logMessage('Não foi possível salvar seu novo mundo.', 'danger');
             }
         }
-        world = new World(scene, worldSeed);
+        // MODIFICADO: Passa a directionalLight para o construtor do World
+        world = new World(scene, worldSeed, directionalLight);
 
     } else {
         // Modo offline, cria um mundo aleatório que não será salvo
-        world = new World(scene, Math.random());
+        // MODIFICADO: Passa a directionalLight para o construtor do World
+        world = new World(scene, Math.random(), directionalLight);
         logMessage("Jogando offline. Progresso não será salvo.", 'info');
     }
     
@@ -672,6 +674,11 @@ function updateGameTimeUI() {
 function animate() {
     requestAnimationFrame(animate);
     const deltaTime = clock.getDelta();
+
+    // NOVO: Adicione esta linha para animar o oceano
+    if (world && world.waterMesh) {
+        world.waterMesh.material.uniforms[ 'time' ].value += deltaTime;
+    }
 
     if (!isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen && !isShelterModalOpen) {
         physics.update(camera, keys, deltaTime);

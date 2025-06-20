@@ -5,6 +5,7 @@ import { ISLAND_SIZE, WATER_LEVEL } from './constants.js';
 import Animal from './animal.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+import { Water } from './Water.js'; // NOVO: Importa o shader de oceano
 
 function createSeededRandom(seed) {
     let s = seed;
@@ -18,11 +19,13 @@ const objLoader = new OBJLoader();
 const mtlLoader = new MTLLoader();
 
 export default class World {
-    constructor(scene, seed) {
+    // MODIFICADO: O construtor agora também recebe a luz direcional
+    constructor(scene, seed, directionalLight) {
         this.scene = scene;
         this.seed = seed;
+        this.directionalLight = directionalLight; // NOVO: Armazena a referência da luz
         this.terrainMesh = null;
-        this.waterMesh = null;
+        this.waterMesh = null; // Este será o nosso oceano
         this.trees = new THREE.Group();
         this.stones = new THREE.Group();
         this.animals = new THREE.Group();
@@ -37,6 +40,7 @@ export default class World {
     generate() {
         console.log(`Gerando terreno suave com a semente: ${this.seed}`);
 
+        // --- GERAÇÃO DO TERRENO (Nenhuma mudança aqui, continua igual) ---
         const terrainGeo = new THREE.PlaneGeometry(ISLAND_SIZE, ISLAND_SIZE, 200, 200);
         terrainGeo.rotateX(-Math.PI / 2);
 
@@ -79,12 +83,28 @@ export default class World {
         this.terrainMesh.castShadow = true;
         this.scene.add(this.terrainMesh);
 
-        const waterGeo = new THREE.PlaneGeometry(ISLAND_SIZE, ISLAND_SIZE);
-        waterGeo.rotateX(-Math.PI / 2);
-        waterGeo.translate(0, WATER_LEVEL, 0);
-        const waterMaterial = new THREE.MeshStandardMaterial({ color: 0x1E90FF, transparent: true, opacity: 0.7, roughness: 0.1 });
-        this.waterMesh = new THREE.Mesh(waterGeo, waterMaterial);
+        // --- GERAÇÃO DA ÁGUA (TODA ESTA SEÇÃO FOI SUBSTITUÍDA) ---
+        const waterGeometry = new THREE.PlaneGeometry(ISLAND_SIZE, ISLAND_SIZE);
+
+        this.waterMesh = new Water(
+            waterGeometry,
+            {
+                textureWidth: 512,
+                textureHeight: 512,
+                waterNormals: new THREE.TextureLoader().load( 'textures/waternormals.jpg', function ( texture ) {
+                    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+                }),
+                sunDirection: this.directionalLight.position.clone().normalize(),
+                sunColor: 0xffffff,
+                waterColor: 0x001e0f,
+                distortionScale: 3.7,
+                fog: this.scene.fog !== undefined
+            }
+        );
+        this.waterMesh.rotation.x = - Math.PI / 2;
+        this.waterMesh.position.y = WATER_LEVEL; // Posição vertical do oceano
         this.scene.add(this.waterMesh);
+        // --- FIM DA SEÇÃO DE GERAÇÃO DA ÁGUA ---
 
         this.placeInitialTrees();
         this.placeInitialStones();
