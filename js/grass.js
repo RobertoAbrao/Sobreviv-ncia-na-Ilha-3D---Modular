@@ -3,11 +3,12 @@ import * as THREE from 'three';
 
 /**
  * Cria e configura um MeshStandardMaterial PBR para o terreno de grama.
+ * @param {THREE.LoadingManager} manager - O gerenciador de carregamento central.
  * @returns {THREE.MeshStandardMaterial} O material pronto para uso.
  */
-export function createTerrainMaterial() {
-    // 1. Carregar as texturas da grama
-    const textureLoader = new THREE.TextureLoader();
+export function createTerrainMaterial(manager) {
+    // O loader de textura agora usa o gerenciador passado como argumento
+    const textureLoader = new THREE.TextureLoader(manager);
     const grassColorTexture = textureLoader.load('./textures/grass/Grass005_2K-JPG_Color.jpg');
     const grassAoTexture = textureLoader.load('./textures/grass/Grass005_2K-JPG_AmbientOcclusion.jpg');
     const grassNormalTexture = textureLoader.load('./textures/grass/Grass005_2K-JPG_NormalDX.jpg');
@@ -15,8 +16,7 @@ export function createTerrainMaterial() {
     
     grassColorTexture.colorSpace = THREE.SRGBColorSpace;
     
-    // 2. Configurar a repetição (tiling) para todas as texturas
-    const textureRepeat = 50; // Ajuste este valor para mudar a "escala" da grama
+    const textureRepeat = 50;
     const allTextures = [grassColorTexture, grassAoTexture, grassNormalTexture, grassRoughnessTexture];
     allTextures.forEach(texture => {
         texture.wrapS = THREE.RepeatWrapping;
@@ -24,7 +24,6 @@ export function createTerrainMaterial() {
         texture.repeat.set(textureRepeat, textureRepeat);
     });
     
-    // 3. Criar e retornar o material PBR
     const terrainMaterial = new THREE.MeshStandardMaterial({
         map: grassColorTexture,
         aoMap: grassAoTexture,

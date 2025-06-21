@@ -17,7 +17,6 @@ body { font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; background
     border-radius: 9999px; overflow: hidden; height: 20px;
 }
 .progress-bar { height: 100%; border-radius: 9999px; transition: width 0.5s ease-in-out; }
-/* Ajustado para não ocupar o espaço todo */
 #message-log { max-height: 150px; overflow-y: auto; display: flex; flex-direction: column-reverse; } 
 .crosshair {
     position: fixed; top: 50%; left: 50%;
@@ -26,7 +25,6 @@ body { font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; background
     border: 1px solid black;
 }
 
-/* NOVO: Estilos para o Modal de Crafting */
 #crafting-modal {
     opacity: 0;
     visibility: hidden;
@@ -49,7 +47,7 @@ body { font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; background
 }
 
 .crafting-item button {
-    background-color: #4CAF50; /* Verde */
+    background-color: #4CAF50;
     color: white;
     padding: 0.5rem 1rem;
     border-radius: 0.3rem;
@@ -63,7 +61,7 @@ body { font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; background
 }
 
 .crafting-item button:disabled {
-    background-color: #6b7280; /* Cinza */
+    background-color: #6b7280;
     cursor: not-allowed;
     opacity: 0.7;
 }
@@ -73,25 +71,23 @@ body { font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; background
     color: #a0aec0;
 }
 
-/* NOVO: Estilos da Hotbar */
 .hotbar-slot {
     position: relative;
     transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
 .hotbar-slot.selected {
-    border-color: #38bdf8; /* Cor de destaque para o slot selecionado */
-    background-color: rgba(255, 255, 255, 0.1); /* Um pouco mais claro quando selecionado */
+    border-color: #38bdf8;
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
-/* NOVO: Estilos para a barra de progresso do cozimento */
 #cooking-progress-container {
     position: fixed;
-    top: 50%; /* Será atualizado via JS */
-    left: 50%; /* Será atualizado via JS */
-    transform: translate(-50%, -50%); /* Centraliza o elemento */
-    pointer-events: none; /* Permite clicar através dele */
-    z-index: 100; /* Garante que fique acima de outros elementos */
+    top: 50%; 
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 100;
     font-size: 0.85rem;
     padding: 0.5rem;
     border-radius: 0.375rem;
@@ -101,22 +97,26 @@ body { font-family: 'Inter', sans-serif; margin: 0; overflow: hidden; background
 }
 
 #cooking-progress-container .progress-bar-container {
-    height: 10px; /* Altura menor para a barra */
+    height: 10px;
     background-color: rgba(255, 255, 255, 0.2);
 }
 
 #cooking-progress-container .progress-bar {
-    background-color: #fca311; /* Cor de fogo/cozimento */
+    background-color: #fca311;
 }
 
-/* NOVO: Estilos para o modal de Abrigo */
-#shelter-modal { /* Adicione este bloco */
+#shelter-modal {
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 
-#shelter-modal.show { /* Adicione este bloco */
+#shelter-modal.show {
     opacity: 1;
     visibility: visible;
+}
+
+/* Estilos para a transição da tela de loading */
+#loading-overlay {
+    transition: opacity 0.5s ease-out;
 }
