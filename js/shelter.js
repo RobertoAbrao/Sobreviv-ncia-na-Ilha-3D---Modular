@@ -3,31 +3,31 @@ import * as THREE from 'three';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 
-// Crie instâncias dos loaders
-const objLoader = new OBJLoader();
-const mtlLoader = new MTLLoader();
-
 export const shelterCost = {
     'Madeira': 20,
     'Pedra': 10
 };
 
 export class Shelter {
-    constructor(position) {
+    // MODIFICADO: O construtor agora aceita o 'manager'
+    constructor(position, manager) {
         this.mesh = new THREE.Group();
         this.mesh.position.copy(position);
 
-        const objPath = 'models/medieval_house/medieval house.obj';
-        const mtlPath = 'models/medieval_house/medieval house.mtl';
-        const texturePath = 'models/medieval_house/house2.png'; // Confirmada como PNG
+        // MODIFICADO: Os loaders agora usam o gerenciador central
+        const objLoader = new OBJLoader(manager);
+        const mtlLoader = new MTLLoader(manager);
+        const textureLoader = new THREE.TextureLoader(manager);
 
-        const textureLoader = new THREE.TextureLoader();
+        const mtlPath = 'models/medieval_house/medieval house.mtl';
+        const texturePath = 'models/medieval_house/house2.png';
+
         let loadedTexture = null;
 
-        // Carrega a textura. Esta função é assíncrona.
         textureLoader.load(texturePath,
             (texture) => {
                 loadedTexture = texture;
+                loadedTexture.colorSpace = THREE.SRGBColorSpace;
             },
             undefined,
             (err) => {
@@ -36,72 +36,51 @@ export class Shelter {
         );
 
         mtlLoader.setPath('models/medieval_house/');
-        // Carrega o arquivo MTL
         mtlLoader.load('medieval house.mtl', (materials) => {
             materials.preload();
             objLoader.setMaterials(materials);
 
             objLoader.setPath('models/medieval_house/');
             objLoader.load('medieval house.obj', (object) => {
-                const scale = 0.1; // Manter este como ponto de partida
+                const scale = 0.1;
                 object.scale.set(scale, scale, scale);
-                object.position.y = 0; // Manter este como ponto de partida
+                object.position.y = 0;
 
                 object.traverse((child) => {
                     if (child.isMesh) {
                         child.castShadow = true;
                         child.receiveShadow = true;
 
-                        if (child.material) {
-                            // Cria um novo material para não modificar o material original do loader
-                            const newMaterial = Array.isArray(child.material) ? child.material.map(m => new THREE.MeshStandardMaterial().copy(m)) : new THREE.MeshStandardMaterial().copy(child.material);
-
-                            const updateMaterial = (mat) => {
-                                if (loadedTexture) {
-                                    mat.map = loadedTexture;
-                                }
-                                mat.color.set(0xffffff); // Garante que a cor base seja branca para a textura aparecer
-                                mat.transparent = false; // <<< ESSENCIAL: TORNAR OPACO (contraria o 'd 0.000000' do MTL)
-                                mat.opacity = 1.0;       // <<< ESSENCIAL: TORNAR TOTALMENTE VISÍVEL
-                                mat.side = THREE.DoubleSide; // <<< NOVO: Renderiza ambos os lados das faces
-                                mat.needsUpdate = true; // Garante a atualização
-                            };
-
-                            if (Array.isArray(newMaterial)) {
-                                newMaterial.forEach(updateMaterial);
-                            } else {
-                                updateMaterial(newMaterial);
-                            }
-                            child.material = newMaterial;
-                        } else {
-                            // Se não houver material, cria um novo com a textura e as propriedades corretas
-                            child.material = new THREE.MeshStandardMaterial({
-                                map: loadedTexture,
-                                color: 0xffffff,
-                                transparent: false,
-                                opacity: 1.0,
-                                side: THREE.DoubleSide // <<< NOVO: Também para o caso de fallback sem material
-                            });
+                        // Assegura que o material seja MeshStandardMaterial para consistência de iluminação
+                        const newMaterial = new THREE.MeshStandardMaterial();
+                        if (child.material.color) newMaterial.color.copy(child.material.color);
+                        
+                        if (loadedTexture) {
+                           newMaterial.map = loadedTexture;
                         }
+                        
+                        newMaterial.transparent = false;
+                        newMaterial.opacity = 1.0;
+                        newMaterial.side = THREE.DoubleSide;
+                        
+                        child.material = newMaterial;
                     }
                 });
 
                 this.mesh.add(object);
                 console.log('Modelo da casa carregado com sucesso!');
             },
-            undefined, // Função de progresso opcional
+            undefined,
             (error) => {
                 console.error('Erro ao carregar o modelo 3D da casa (OBJ):', error);
                 this.createFallbackShelter();
             });
         },
-        undefined, // Função de progresso opcional
+        undefined,
         (error) => {
             console.error('Erro ao carregar o arquivo MTL da casa:', error);
-            // Fallback: Se o MTL não carregar, tenta carregar o OBJ sem materiais MTL
             objLoader.setPath('models/medieval_house/');
             objLoader.load('medieval house.obj', (object) => {
-                // Use os mesmos ajustes de escala e posição do bloco de sucesso
                 const scale = 0.1;
                 object.scale.set(scale, scale, scale);
                 object.position.y = 0;
@@ -109,19 +88,14 @@ export class Shelter {
                     if (child.isMesh) {
                         child.castShadow = true;
                         child.receiveShadow = true;
-                        // Se o MTL falhou, aplicamos um material padrão e tentamos a textura
                         child.material = new THREE.MeshStandardMaterial({
-                            map: loadedTexture, // Tenta aplicar a textura carregada
-                            color: 0xffffff, // Cor base branca
-                            transparent: false,
-                            opacity: 1.0,
-                            side: THREE.DoubleSide // <<< NOVO: Também para o caso de fallback sem MTL
+                            map: loadedTexture,
+                            color: 0xcccccc,
+                            side: THREE.DoubleSide
                         });
-                        child.material.needsUpdate = true;
                     }
                 });
                 this.mesh.add(object);
-                console.log('Modelo da casa carregado sem MTL (material padrão aplicado).');
             }, undefined, (objError) => {
                 console.error('Erro ao carregar OBJ da casa sem MTL:', objError);
                 this.createFallbackShelter();

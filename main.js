@@ -25,13 +25,16 @@ let dayTime = 8, isNight = false, isRaining = false;
 let rainParticles = null;
 let currentUser = null, db;
 let logicInterval;
-const LOGIC_TICK_RATE = 50; 
+const LOGIC_TICK_RATE = 50;
 let isCraftingModalOpen = false, isInteractionModalOpen = false, isCampfireModalOpen = false, isShelterModalOpen = false;
 const TOTAL_CYCLE_SECONDS = 480;
 const loadingOverlay = document.getElementById('loading-overlay');
 const loadingProgressBar = document.getElementById('loading-progress-bar');
 const loadingProgressText = document.getElementById('loading-progress-text');
-const craftableItems = [ { name: 'Fogueira', cost: { 'Madeira': 5, 'Pedra': 3 }, effect: (player, scene, camera, world, raycaster) => { if (player.hasCampfire) { logMessage('Você já construiu uma fogueira!', 'warning'); return false; } const position = camera.position.clone(); const groundY = world.getTerrainHeight(position.x, position.z); if (groundY < WATER_LEVEL) { logMessage('Não é possível construir na água!', 'danger'); return false; } position.y = groundY + 0.1; const newCampfire = new Campfire(position); scene.add(newCampfire.mesh); activeCampfire = newCampfire; player.hasCampfire = true; player.campfireLocation = { x: position.x, y: position.y, z: position.z }; logMessage('Você construiu uma fogueira!', 'success'); return true; }, requires: null }, { name: 'Machado', cost: { 'Madeira': 10, 'Pedra': 5 }, effect: (player) => { if (player.hasAxe) { logMessage('Você já possui um machado!', 'warning'); return false; } player.hasAxe = true; logMessage('Você criou um machado!', 'success'); return true; }, requires: null }, { name: 'Picareta', cost: { 'Madeira': 10, 'Pedra': 10 }, effect: (player) => { if (player.hasPickaxe) { logMessage('Você já possui uma picareta!', 'warning'); return false; } player.hasPickaxe = true; logMessage('Você criou uma picareta!', 'success'); return true; }, requires: null }, { name: 'Abrigo', cost: { 'Madeira': 20, 'Pedra': 10 }, effect: (player, scene, camera, world, raycaster) => { if (player.hasShelter) { logMessage('Você já construiu um abrigo!', 'warning'); return false; } const position = camera.position.clone(); const groundY = world.getTerrainHeight(position.x, position.z); if (groundY < WATER_LEVEL + 2) { logMessage('Não é possível construir o abrigo tão perto da água!', 'danger'); return false; } position.y = groundY; const newShelter = new Shelter(position); scene.add(newShelter.mesh); activeShelter = newShelter; player.hasShelter = true; player.shelterLocation = { x: position.x, y: position.y, z: position.z }; logMessage('Você construiu um abrigo! Um lugar para se proteger.', 'success'); return true; }, requires: null } ];
+
+// MODIFICADO: A variável agora é de escopo do módulo para ser acessível em 'craftableItems'
+let loadingManager; 
+let craftableItems = [];
 
 
 function logicTick() {
@@ -68,7 +71,7 @@ export async function initializeGame(user) {
     currentUser = user; 
     db = getFirestore();
     
-    const loadingManager = new THREE.LoadingManager();
+    loadingManager = new THREE.LoadingManager();
 
     loadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
         const progress = itemsLoaded / itemsTotal;
@@ -91,6 +94,17 @@ export async function initializeGame(user) {
             animate();
         }, 500);
     };
+
+    // MODIFICADO: A lista de itens criáveis é definida aqui para ter acesso ao 'loadingManager'
+    craftableItems = [
+        { name: 'Fogueira', cost: campfireCost, effect: (player, scene, camera, world) => { if (player.hasCampfire) { logMessage('Você já construiu uma fogueira!', 'warning'); return false; } const position = camera.position.clone(); const groundY = world.getTerrainHeight(position.x, position.z); if (groundY < WATER_LEVEL) { logMessage('Não é possível construir na água!', 'danger'); return false; } position.y = groundY + 0.1; const newCampfire = new Campfire(position); scene.add(newCampfire.mesh); activeCampfire = newCampfire; player.hasCampfire = true; player.campfireLocation = { x: position.x, y: position.y, z: position.z }; logMessage('Você construiu uma fogueira!', 'success'); return true; }, requires: null },
+        { name: 'Machado', cost: { 'Madeira': 10, 'Pedra': 5 }, effect: (player) => { if (player.hasAxe) { logMessage('Você já possui um machado!', 'warning'); return false; } player.hasAxe = true; logMessage('Você criou um machado!', 'success'); return true; }, requires: null },
+        { name: 'Picareta', cost: { 'Madeira': 10, 'Pedra': 10 }, effect: (player) => { if (player.hasPickaxe) { logMessage('Você já possui uma picareta!', 'warning'); return false; } player.hasPickaxe = true; logMessage('Você criou uma picareta!', 'success'); return true; }, requires: null },
+        { name: 'Abrigo', cost: shelterCost, effect: (player, scene, camera, world) => { if (player.hasShelter) { logMessage('Você já construiu um abrigo!', 'warning'); return false; } const position = camera.position.clone(); const groundY = world.getTerrainHeight(position.x, position.z); if (groundY < WATER_LEVEL + 2) { logMessage('Não é possível construir o abrigo tão perto da água!', 'danger'); return false; } position.y = groundY; 
+            // MODIFICADO: Passa o loadingManager ao criar um novo abrigo
+            const newShelter = new Shelter(position, loadingManager); 
+            scene.add(newShelter.mesh); activeShelter = newShelter; player.hasShelter = true; player.shelterLocation = { x: position.x, y: position.y, z: position.z }; logMessage('Você construiu um abrigo! Um lugar para se proteger.', 'success'); return true; }, requires: null }
+    ];
     
     scene = new THREE.Scene(); 
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000); 
@@ -140,10 +154,7 @@ export async function initializeGame(user) {
             try { 
                 await setDoc(playerDocRef, { worldSeed: worldSeed, playerState: player.saveState(), dayTime: dayTime }, { merge: true }); 
                 logMessage('Seu novo mundo foi salvo na nuvem!', 'success'); 
-            } catch (error) { 
-                console.error("Erro ao salvar nova semente:", error); 
-                logMessage('Não foi possível salvar seu novo mundo.', 'danger'); 
-            } 
+            } catch (error) { console.error("Erro ao salvar nova semente:", error); logMessage('Não foi possível salvar seu novo mundo.', 'danger'); } 
         } 
         world = new World(scene, worldSeed, directionalLight, loadingManager); 
     } else { 
@@ -154,7 +165,14 @@ export async function initializeGame(user) {
     world.generate();
     
     if (player.hasCampfire && player.campfireLocation) { const campfirePos = new THREE.Vector3( player.campfireLocation.x, player.campfireLocation.y, player.campfireLocation.z ); const loadedCampfire = new Campfire(campfirePos); scene.add(loadedCampfire.mesh); activeCampfire = loadedCampfire; logMessage('Fogueira carregada do progresso salvo!', 'info'); }
-    if (player.hasShelter && player.shelterLocation) { const shelterPos = new THREE.Vector3( player.shelterLocation.x, player.shelterLocation.y, player.shelterLocation.z ); const loadedShelter = new Shelter(shelterPos); scene.add(loadedShelter.mesh); activeShelter = loadedShelter; logMessage('Abrigo carregado do progresso salvo!', 'info'); }
+    if (player.hasShelter && player.shelterLocation) { 
+        const shelterPos = new THREE.Vector3( player.shelterLocation.x, player.shelterLocation.y, player.shelterLocation.z );
+        // MODIFICADO: Passa o loadingManager ao carregar um abrigo salvo
+        const loadedShelter = new Shelter(shelterPos, loadingManager); 
+        scene.add(loadedShelter.mesh); 
+        activeShelter = loadedShelter; 
+        logMessage('Abrigo carregado do progresso salvo!', 'info'); 
+    }
     
     const startX = 0, startZ = 0; 
     const startY = world.getTerrainHeight(startX, startZ) + PLAYER_HEIGHT; 
@@ -183,7 +201,6 @@ export async function initializeGame(user) {
     setInterval(() => { world.respawnTreeIfNeeded(); world.respawnStoneIfNeeded(); world.respawnAnimalIfNeeded(animalsInstances); }, 15000);
     setInterval(updateWeather, 60000);
     
-    // Inicia o loop de renderização, mas o jogo só se torna visível após o onLoad.
     animate();
 }
 
@@ -191,7 +208,7 @@ function animate() {
     requestAnimationFrame(animate);
 
     if (loadingOverlay.style.display !== 'none') {
-        renderer.render(scene, camera); // Renderiza a cena mesmo durante o loading para a compilação funcionar
+        renderer.render(scene, camera);
         return;
     }
     
@@ -215,10 +232,9 @@ function animate() {
     updateUI(player);
     renderer.render(scene, camera);
 }
-// ... Funções de controles e de lógica do jogo restantes ...
 async function savePlayerState() { if (!currentUser || currentUser.uid === 'offline-player' || !world) return; const playerState = player.saveState(); const fullState = { playerState: playerState, worldSeed: world.seed, dayTime: dayTime }; try { await setDoc(doc(db, "players", currentUser.uid), fullState, { merge: true }); } catch (error) { console.error("Erro ao salvar progresso:", error); } }
 function initializeControls() { document.addEventListener('keydown', (e) => { keys[e.code] = true; if (e.code === 'KeyB') { isCraftingModalOpen = !isCraftingModalOpen; toggleCraftingModal(isCraftingModalOpen); if (isCraftingModalOpen) { document.exitPointerLock(); renderCraftingList(craftableItems, player, handleCraftItem); } if (isCraftingModalOpen && isInteractionModalOpen) { isInteractionModalOpen = false; toggleInteractionModal(isInteractionModalOpen); } if (isCraftingModalOpen && isCampfireModalOpen) { isCampfireModalOpen = false; toggleCampfireModal(isCampfireModalOpen); } if (isCraftingModalOpen && isShelterModalOpen) { isShelterModalOpen = false; toggleShelterModal(isShelterModalOpen); } } if (e.code === 'KeyH') { isInteractionModalOpen = !isInteractionModalOpen; toggleInteractionModal(isInteractionModalOpen); if (isInteractionModalOpen) { document.exitPointerLock(); renderInteractionList(player, handlePlayerInteraction); } if (isInteractionModalOpen && isCraftingModalOpen) { isCraftingModalOpen = false; toggleCraftingModal(isCraftingModalOpen); } if (isInteractionModalOpen && isCampfireModalOpen) { isCampfireModalOpen = false; toggleCampfireModal(isCampfireModalOpen); } if (isInteractionModalOpen && isShelterModalOpen) { isShelterModalOpen = false; toggleShelterModal(isShelterModalOpen); } } if (e.code === 'KeyK') { if (activeCampfire) { isCampfireModalOpen = !isCampfireModalOpen; toggleCampfireModal(isCampfireModalOpen); if (isCampfireModalOpen) { document.exitPointerLock(); interactionHandler.openCampfireMenu(); } if (isCampfireModalOpen && isCraftingModalOpen) { isCraftingModalOpen = false; toggleCraftingModal(isCampfireModalOpen); } if (isCampfireModalOpen && isInteractionModalOpen) { isInteractionModalOpen = false; toggleInteractionModal(isInteractionModalOpen); } if (isCampfireModalOpen && isShelterModalOpen) { isShelterModalOpen = false; toggleShelterModal(isShelterModalOpen); } } else { logMessage('Você precisa construir uma fogueira primeiro (tecla B)!', 'warning'); } } if (e.code === 'KeyL') { if (player.hasShelter) { isShelterModalOpen = !isShelterModalOpen; toggleShelterModal(isShelterModalOpen); if (isShelterModalOpen) { document.exitPointerLock(); renderShelterOptions(player, handleSleepInShelter); } if (isShelterModalOpen && isCraftingModalOpen) { isCraftingModalOpen = false; toggleCraftingModal(isCraftingModalOpen); } if (isShelterModalOpen && isInteractionModalOpen) { isInteractionModalOpen = false; toggleInteractionModal(isInteractionModalOpen); } if (isShelterModalOpen && isCampfireModalOpen) { isCampfireModalOpen = false; toggleCampfireModal(isCampfireModalOpen); } } else { logMessage('Você precisa construir um abrigo primeiro (tecla B)!', 'warning'); } } if (e.code === 'Digit1') { selectTool(player, 'Machado'); } else if (e.code === 'Digit2') { selectTool(player, 'Picareta'); } }); document.addEventListener('keyup', (e) => { keys[e.code] = false; }); document.body.addEventListener('click', () => { if (!isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen && !isShelterModalOpen) { document.body.requestPointerLock(); } }); document.getElementById('close-crafting-modal').addEventListener('click', () => { isCraftingModalOpen = false; toggleCraftingModal(false); }); document.getElementById('close-interaction-modal').addEventListener('click', () => { isInteractionModalOpen = false; toggleInteractionModal(false); }); document.getElementById('close-campfire-modal').addEventListener('click', () => { isCampfireModalOpen = false; toggleCampfireModal(false); }); document.getElementById('close-shelter-modal').addEventListener('click', () => { isShelterModalOpen = false; toggleShelterModal(false); }); camera.rotation.order = 'YXZ'; document.addEventListener('mousemove', (e) => { if (document.pointerLockElement === document.body && !isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen && !isShelterModalOpen) { camera.rotation.y -= e.movementX / 500; camera.rotation.x -= e.movementY / 500; camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x)); } }); document.addEventListener('mousedown', (e) => { if (document.pointerLockElement === document.body && e.button === 0 && !isCraftingModalOpen && !isInteractionModalOpen && !isCampfireModalOpen && !isShelterModalOpen) { interactionHandler.handlePrimaryAction(); } }); }
-function handleCraftItem(item) { if ((item.name === 'Machado' && player.hasAxe) || (item.name === 'Picareta' && player.hasPickaxe)) { logMessage(`Você já possui ${item.name}.`, 'warning'); return; } if (item.name === 'Abrigo' && player.hasShelter) { logMessage(`Você já construiu um ${item.name}.`, 'warning'); return; } if (player.hasResources(item.cost)) { if (item.effect(player, scene, camera, world, raycaster)) { player.consumeResources(item.cost); renderCraftingList(craftableItems, player, handleCraftItem); if (currentUser.uid !== 'offline-player') { savePlayerState(); } } updateUI(player); } else { logMessage(`Você não tem recursos suficientes para criar ${item.name}.`, 'danger'); } }
+function handleCraftItem(item) { if ((item.name === 'Machado' && player.hasAxe) || (item.name === 'Picareta' && player.hasPickaxe)) { logMessage(`Você já possui ${item.name}.`, 'warning'); return; } if (item.name === 'Abrigo' && player.hasShelter) { logMessage(`Você já construiu um ${item.name}.`, 'warning'); return; } if (player.hasResources(item.cost)) { if (item.effect(player, scene, camera, world)) { player.consumeResources(item.cost); renderCraftingList(craftableItems, player, handleCraftItem); if (currentUser.uid !== 'offline-player') { savePlayerState(); } } updateUI(player); } else { logMessage(`Você não tem recursos suficientes para criar ${item.name}.`, 'danger'); } }
 function handlePlayerInteraction(actionType) { let actionSuccessful = false; if (actionType === 'eat') { actionSuccessful = player.eatCookedMeat(logMessage); } else if (actionType === 'eat-fish') { actionSuccessful = player.eatCookedFish(logMessage); } else if (actionType === 'drink') { actionSuccessful = player.drinkCleanWater(logMessage); } if (actionSuccessful && currentUser.uid !== 'offline-player') { savePlayerState(); } renderInteractionList(player, handlePlayerInteraction); updateUI(player); }
 function handleSleepInShelter() { if (!player.hasShelter) { logMessage('Você precisa de um abrigo para dormir!', 'warning'); return; } if (!isNight) { logMessage('Você só pode dormir à noite para pular o tempo.', 'warning'); return; } if (!checkProximityToShelterOrCampfire()) { logMessage('Você precisa estar perto do seu abrigo para dormir.', 'warning'); return; } logMessage('Você se recolheu para dormir no abrigo.', 'info'); toggleShelterModal(false); document.body.requestPointerLock(); const currentTimeInHours = dayTime; const hoursUntilMorning = 24 - currentTimeInHours + 7; dayTime += hoursUntilMorning; if (dayTime >= 24) { dayTime -= 24; } isNight = false; logMessage('Você acordou revigorado!', 'success'); player.health = Math.min(100, player.health + 10); player.hunger = Math.min(100, player.hunger + 10); player.thirst = Math.min(100, player.thirst + 10); player.coldness = 0; if (currentUser.uid !== 'offline-player') { savePlayerState(); } }
 function checkProximityToShelterOrCampfire() { const playerPosition = camera.position; const proximityRadius = 5; if (activeShelter) { const shelterPosition = activeShelter.mesh.position; const distanceToShelter = playerPosition.distanceTo(shelterPosition); if (distanceToShelter <= proximityRadius) { return true; } } if (activeCampfire) { const campfirePosition = activeCampfire.mesh.position; const distanceToCampfire = playerPosition.distanceTo(campfirePosition); if (distanceToCampfire <= proximityRadius) { return true; } } return false; }
